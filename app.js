@@ -187,7 +187,7 @@ function overview() {
   <div class="metrics">${metricCards}</div>
   <div class="paper-list">${paperList(latest)}</div>
   <div class="result-footer"><span>期刊影响因子 · ${impactYear} 指标年</span><button class="linkbtn" data-page="papers">全部论文与分区 ${icon("arrow")}</button></div></section>
-  <p class="scope-line">${esc(scope.note||"")} ${scope.kind==="case"?external(window.AtlasZhong.sourceUrl,"Cardiff 作者目录")+"　"+external(window.AtlasZhong.institutionSource,"深圳会议署名"):""}</p>
+  <p class="scope-line">${esc(scope.note||"")} ${scope.kind==="case"?external(window.AtlasZhong.sourceUrl,"Cardiff 作者目录")+"　"+external(window.AtlasZhong.institutionSource,"深圳会议署名")+(scope.mode==="author"?'　<a href="./zhong.html">查看精简结果卡片</a>':""):""}</p>
   ${pending?`<div class="notice">${pending} 条成果身份待核。 <button class="linkbtn" data-act="identity-list">查看待核论文</button></div>`:""}
   ${window.AtlasContributions.render(rows,scope)}
   <div class="analysis"><section class="panel chart-panel"><div class="panel-head"><h2>年度发表趋势</h2><span class="tiny">按发表年</span></div>${window.AtlasCharts.trend(rows,scope.mode)}</section><section class="panel chart-panel"><div class="panel-head"><h2>${scope.mode==="institution"?"第一单位分布":"署名构成"}</h2></div>${window.AtlasCharts.composition(rows,scope.mode)}</section></div>`;
