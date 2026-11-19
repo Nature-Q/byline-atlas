@@ -126,7 +126,7 @@ function stats(rows){
  return scope.mode==="institution"?[
  ["收录论文",n,"本次统计范围","file","#e6eee7","#376c50"],["第一单位",count(rows,r=>r.firstUnit===true),"按当前机构口径","institution","#e1eee7","#34664e"],["非第一单位",count(rows,r=>r.firstUnit===false),"参与署名的其他论文","layers","#faecdf","#99623b"],["单位待核",count(rows,r=>r.firstUnit==null),"缺少明确地址顺序","flag","#eeebf4","#736489"]
  ]:[
- ["收录论文",n,"当前范围内的独立论文","file","#e7eee6","#326046"],["第一作者",count(rows,isLead),`首位 ${count(rows,r=>has(r,"first"))} · 共一 ${count(rows,r=>has(r,"cofirst"))}`,"pen","#e0eee7","#30654e"],["通讯作者",count(rows,isCorr),`其中共同通讯 ${count(rows,r=>has(r,"cocorresponding"))} 篇`,"mail","#f8eadc","#a2683d"],["一作或通讯",count(rows,r=>isLead(r)||isCorr(r)),"重叠署名按篇去重","layers","#efebf4","#716282"]
+ ["收录论文",n,"当前范围内的独立论文","file","#e7eee6","#326046"],["第一作者",count(rows,isLead),`首位 ${count(rows,r=>has(r,"first"))} · 共一 ${count(rows,r=>has(r,"cofirst"))}`,"pen","#e0eee7","#30654e"],[scope.kind==="live"?"已标记通讯作者":"通讯作者",count(rows,isCorr),`其中共同通讯 ${count(rows,r=>has(r,"cocorresponding"))} 篇${rows.some(r=>!isCorr(r)&&r.roleUnknown)?" · 另有署名待核记录":""}`,"mail","#f8eadc","#a2683d"],["一作或通讯",count(rows,r=>isLead(r)||isCorr(r)),"重叠署名按篇去重","layers","#efebf4","#716282"]
  ];
 }
 function hero(){
@@ -153,7 +153,7 @@ function engrave(){
  ctx.restore();
 }
 function identity(){const initials=scope.name.split(/\s+/).map(s=>s[0]).slice(0,2).join("").toUpperCase();
- return `<div class="report-head"><div class="identity"><span class="avatar">${scope.mode==="institution"?icon("institution"):esc(initials)}</span><div class="namewrap"><h2>${esc(scope.displayName||scope.name)}</h2><span class="badge">${scope.kind==="case"?"已核实":scope.kind==="sample"?"精选示例":scope.kind==="import"?"导入档案":scope.mode==="institution"?"机构档案":"学者档案"}</span><div class="spec">${esc(scope.affiliation||scope.source||"")}${scope.kind==="sample"?" · 选录 "+scope.records.length+" 篇":""}</div></div></div><div class="top-actions">${yearsSelect()}${exportBtn()}</div></div>`;
+ return `<div class="report-head"><div class="identity"><span class="avatar">${scope.mode==="institution"?icon("institution"):esc(initials)}</span><div class="namewrap"><h2>${esc(scope.displayName||scope.name)}</h2><span class="badge">${scope.kind==="case"?"Cardiff 目录样本":scope.kind==="sample"?"精选示例":scope.kind==="import"?"导入档案":scope.mode==="institution"?"机构档案":"学者档案"}</span><div class="spec">${esc(scope.kind==="case"?(scope.mode==="institution"?"仅含钟志豪在 Cardiff 署名的 4 篇期刊论文":"Cardiff 博士 · 2026 年 8 月会议列名单位为哈工大（深圳）"):scope.affiliation||scope.source||"")}${scope.kind==="sample"?" · 选录 "+scope.records.length+" 篇":""}</div></div></div><div class="top-actions">${yearsSelect()}${exportBtn()}</div></div>`;
 }
 function metricsPage(){
  const rows=scoped();
@@ -290,9 +290,11 @@ let lastLiveYear="",searchProvider="openalex";
 function snapshotDraft(){if(byId("query"))query=byId("query").value;if(byId("affiliation"))affiliation=byId("affiliation").value;}
 function localCandidate(m,q,unit){
  const n=q.trim().toLowerCase().replace(/^https?:\/\/(?:orcid\.org|openalex\.org)\//,"").replace(/\s+/g," ");
- const known=m==="institution"?["cardiff university","university of cardiff","i79510175","卡迪夫大学","卡迪夫"]:["zhihao zhong","zhong zhihao","钟志豪"];
- if(!known.includes(n))return null;
- const v=zhongScope(m);return {...v.candidate,provider:"snapshot",affiliation:v.affiliation,detail:"2026-11-19 原文核查记录 · 可离线打开"};
+ if(m!=="author"||!["zhihao zhong","zhong zhihao","钟志豪"].includes(n))return null;
+ const hint=(unit||"").trim().toLowerCase().normalize("NFKC").replace(/[\s(),，·-]/g,"");
+ const units=["cardiff","cardiffuniversity","universityofcardiff","卡迪夫","卡迪夫大学","hit","hitsz","harbininstituteoftechnology","harbininstituteoftechnologyshenzhen","哈尔滨工业大学","哈尔滨工业大学深圳","哈工大","哈工大深圳"];
+ if(hint&&!units.includes(hint))return null;
+ const v=zhongScope(m);return {...v.candidate,provider:"snapshot",affiliation:v.affiliation,detail:"Cardiff 目录样本 · 4 篇期刊论文 · 2026-11-19 核查"};
 }
 async function search(){
  snapshotDraft();if(!query.trim()||busy)return;notice="";const seq=++requestSeq;
