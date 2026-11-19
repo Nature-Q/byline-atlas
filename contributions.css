@@ -1,0 +1,75 @@
+.contrib-panel {
+  padding: clamp(14px, 2.5vw, 23px);
+  margin: 0 0 16px;
+  color: var(--ink, #202f29);
+}
+.contrib-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px 18px;
+  flex-wrap: wrap;
+}
+.contrib-header h2,
+.contrib-panel h3,
+.contrib-evidence p {
+  margin: 0;
+}
+.contrib-header span,
+.contrib-denom,
+.contrib-foot,
+.contrib-evidence li span {
+  color: var(--sub, #637068);
+  font-size: 12px;
+}
+.contrib-panel h3 {
+  margin-top: 18px;
+  margin-bottom: 7px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.contrib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 185px), 1fr));
+  gap: 9px;
+  align-items: start;
+}
+.contrib-card {
+  border: 1px solid var(--line, #dce1d8);
+  border-radius: 8px;
+  min-width: 0;
+}
+.contrib-card summary {
+  cursor: pointer;
+  padding: 11px 14px;
+  overflow-wrap: anywhere;
+}
+.contrib-card summary::marker {
+  color: var(--sub, #637068);
+  font-size: 10px;
+}
+.contrib-card summary:focus-visible {
+  outline: 2px solid var(--teal, #18533f);
+  outline-offset: 1px;
+}
+.contrib-card strong,
+.contrib-denom {
+  display: block;
+}
+.contrib-label { font-weight: 550; }
+.contrib-card strong {
+  color: var(--teal, #18533f);
+  font-size: 23px;
+  line-height: 1.45;
+  font-variant-numeric: tabular-nums;
+}
+.contrib-evidence {
+  border-top: 1px solid var(--line, #dce1d8);
+  padding: 10px 14px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.contrib-evidence p + p,
+.contrib-evidence li + li { margin-top: 6px; }
+.contrib-evidence ul { padding-left: 17px; margin: 9px 0 0; }
+.contrib-foot { margin: 13px 0 0; }

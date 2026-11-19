@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#183f36"><title>署名图谱 · Byline Atlas</title><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="contributions.css"><link rel="icon" href="mark.svg" type="image/svg+xml"></head>
+<body>
+<aside class="sidebar" id="sidebar">
+ <a class="brand" href="#overview" aria-label="署名图谱首页"><img src="mark.svg" width="41" height="41" alt=""><span><b>署名图谱</b><small>Byline Atlas</small></span></a>
+ <div class="nav-group">工作空间</div>
+ <nav id="nav"></nav>
+ <div class="nav-group below">数据与帮助</div><nav id="support-nav"></nav>
+ <div class="side-bottom"><i class="source-dot"></i><span>个人工作区<small>在此浏览器保存</small></span></div>
+</aside>
+<div class="shade" id="shade"></div>
+<div class="main-shell">
+ <header class="topbar">
+  <div class="crumb"><button class="mobile-menu flat" aria-label="打开菜单" id="menu-btn"></button><span>工作台</span><b>/</b><strong id="page-name">成果概览</strong></div>
+  <div class="top-actions"><button class="outline" data-page="search">检索学者与机构</button><button class="plain" data-page="method" id="guide"></button></div>
+ </header>
+ <main id="main" tabindex="-1"><noscript>请启用 JavaScript 以查询学者和机构。</noscript></main>
+</div>
+<dialog id="dialog"><div class="dialog-head"><h2 id="dia-title"></h2><button class="flat xbtn" id="dia-close" aria-label="关闭"></button></div><div id="dia-content"></div></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="sample.js"></script>
+<script src="institution-sample.js"></script>
+<script src="imports.js"></script>
+<script src="zhong.js"></script>
+<script src="journal-imports.js"></script>
+<script src="contributions.js"></script>
+<script src="biomedical.js"></script>
+<script src="retrieval.js"></script>
+<script src="charts.js"></script>
+<script src="app.js"></script>
+</body></html>
