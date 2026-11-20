@@ -178,14 +178,20 @@
       evidence:independenceEvidence};
     const potential=ratio(observations(rows.filter(r=>yearOf(r)>=asof-2&&yearOf(r)<=asof),lead),(asof-2)+'–'+asof);
     function growth(r, subsequent) {
-      const y=yearOf(r), series=baseline.get(topicOf(r));
+      const y=yearOf(r), topic=topicOf(r), snapshot=r.topicAnnualBaseline;
+      let series=baseline.get(topic);
+      if(!series && topic && snapshot?.id===topic && snapshot.to<=asof-1 && snapshot.url &&
+        Array.isArray(snapshot.annualCounts) && snapshot.annualCounts.length===snapshot.to-snapshot.from+1 &&
+        snapshot.annualCounts.every(n=>Number.isSafeInteger(n)&&n>=0)) {
+        series={...snapshot, counts:new Map(snapshot.annualCounts.map((n,i)=>[snapshot.from+i,n]))};
+      }
       if(!y || !series || y-2<series.from || (subsequent ? y+2 : y-1)>series.to)return null;
       const n=yr=>series.counts.get(yr)||0;
       const base=subsequent ? (n(y-2)+n(y-1))/2 : n(y-2);
       if(base<20)return null;
       const end=subsequent ? (n(y+1)+n(y+2))/2 : n(y-1);
       const periods=subsequent ? (y-2)+'–'+(y-1)+' 与 '+(y+1)+'–'+(y+2)+' 年均' : (y-2)+' 与 '+(y-1)+' 年';
-      return {yes:end/base>=1.25,detail:periods+'发文量 '+base+' → '+end+' 篇', url:'https://openalex.org/'+topicOf(r)};
+      return {yes:end/base>=1.25,detail:periods+'发文量 '+base+' → '+end+' 篇'+(series.observedAt?'，取数 '+series.observedAt:''), url:series.url || 'https://openalex.org/'+topic};
     }
     const foresight=ratio(observations(rows,r=>growth(r,true)),'以完整年度做事后比较');
     const frontier=ratio(observations(rows,r=>growth(r,false)),'发表当时已可观察');
@@ -265,7 +271,16 @@
       return '<div class="pv-score" data-score="'+(m.score==null?'':m.score)+'" data-dim="'+id+'"><details><summary><b>'+name+'</b><strong>'+(m.score==null?'待补':m.score.toFixed(1))+'</strong>'+(m.score==null?'':bar(m.score))+'</summary><p>'+esc(method)+'</p>'+listing+'</details><small>'+esc(m.detail)+' · 覆盖 '+m.assessed+' / '+rows.length+' 篇</small><label>权重 <input type="number" min="0" max="100" step="1" value="'+weightValue(weights[id])+'" data-pv-weight="'+id+'" aria-label="'+name+'权重"></label></div>';
     }).join('');
     const info=topics.length?'<p>最多取当前论文中出现最多的 5 个 OpenAlex 主主题；基准年均至少 20 篇。每个主题请求一次年度分布。</p><button type="button" class="outline" data-pv-baseline>读取主题年度基线</button>':'<p>当前记录缺少 OpenAlex 主主题 ID，暂无法比较领域年度发文增幅。</p>';
-    return '<section class="panel pv-panel"><h2>自定义学术评价</h2><p>每项按本次书目给出 0–100 的描述性分值；展开可查算法和证据。调整个人权重后按权重求平均，权重为 0 的维度退出计算。分数随职业阶段、学科和收录范围变化。</p><div class="pv-scores">'+cards+'</div><output class="pv-total" aria-live="polite">'+esc(summary(scores,weights))+'</output>'+info+'<p data-pv-status role="status"></p></section>';
+    return '<section class="panel pv-panel"><h2>自定义学术评价</h2><p>每项按本次书目给出 0–100 的描述性分值，展开可查算法和证据。调整个人权重后按权重求平均，权重为 0 的维度退出计算。分数随职业阶段、学科和收录范围变化。</p><div class="pv-scores">'+cards+'</div><output class="pv-total" aria-live="polite">'+esc(summary(scores,weights))+'</output>'+info+'<p data-pv-status role="status"></p>'+citationsHTML(rows)+'</section>';
+  }
+  function citationsHTML(rows) {
+    const reported=rows.filter(r=>citeSource(r).length);
+    if(!reported.length)return '';
+    const lines=reported.map(r=>'<tr><td>'+ref(r)+'</td><td>'+citeSource(r).map(e=>{
+      const url=safeUrl(e.url), label=esc(e.source)+' · '+e.count+' 次';
+      return (url?'<a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">'+label+'</a>':label)+(e.observedAt?' · '+esc(String(e.observedAt).slice(0,10)):'');
+    }).join('<br>')+'</td></tr>').join('');
+    return '<h3>逐篇引用记录</h3><p>有引文记录 '+reported.length+' / '+rows.length+' 篇。新近论文可在此查看已收录的引用。不同数据库的计数分别列出。</p><table class="pv-cites"><thead><tr><th>论文</th><th>数据库、次数及取数日期</th></tr></thead><tbody>'+lines+'</tbody></table>';
   }
   function render(records, scope={}) {
     if(scope.mode==='institution')return '';
@@ -308,7 +323,8 @@
           if(!Number.isInteger(y)||!Number.isInteger(n)||n<0)throw Error('年度分布不完整');
           counts.set(y,n);
         }
-        cache.set(topic.id,{from,to,counts});
+        const query=new URLSearchParams({filter:'primary_topic.id:'+topic.id+',from_publication_date:'+from+'-01-01,to_publication_date:'+to+'-12-31',group_by:'publication_year',per_page:'100'});
+        cache.set(topic.id,{from,to,counts,observedAt:new Date().toISOString().slice(0,10),url:'https://api.openalex.org/works?'+query});
       } catch(e) { failures.push(topic.title+'：'+(e.message||'请求失败')); }
     }
     if(!root.isConnected)return;

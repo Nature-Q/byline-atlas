@@ -37,4 +37,5 @@
 .pv-periods li{padding:3px 8px;background:#edf3e9;color:var(--teal);font-size:12px;border-radius:4px;overflow-wrap:anywhere}
 .pv-external{margin-top:14px;padding:10px 12px;border-left:3px solid #c38d5d;background:#f8f3eb}
 .pv-external b{font-size:13px}.pv-panel .pv-external p{margin:3px 0 0}
+.pv-panel .pv-cites thead th:first-child{width:53%}.pv-panel .pv-cites thead th:last-child{width:47%}
 @media(max-width:520px){.pv-panel{padding:14px}.pv-panel thead th:first-child{width:4.4em}.pv-panel thead th:last-child{width:23%}.pv-panel th,.pv-panel td{padding-inline:4px}.pv-scores{grid-template-columns:repeat(2,minmax(0,1fr))}.pv-score{padding:9px}.pv-score summary{grid-template-columns:1fr}.pv-score summary strong{padding-left:13px}}

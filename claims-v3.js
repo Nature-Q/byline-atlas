@@ -84,7 +84,7 @@
   let roster=read('roster',[]), recent=read('recent',[]), last=read('last',''), dataset=last?read('work/'+last,null):null;
   if(!Array.isArray(roster))roster=[];
   if(!Array.isArray(recent))recent=[];
-  let ui=null, choices=[], active=false, token=0, notice='', saveError='', method='all', page=0, reviewing=null;
+  let ui=null, choices=[], active=false, token=0, sharedRoute='', viewedUnit='', notice='', saveError='', method='all', page=0, reviewing=null;
   let query=dataset?.org.name||'', chosenYear=dataset?.year||new Date().getFullYear();
   const datasetKey=d=>(d.org.workspace||d.org.id)+'/'+d.year;
   function write(key,value){try{localStorage.setItem(base+key,JSON.stringify(value));return true;}catch{saveError='浏览器存储不足或不可用。当前结果仅留在本页，请及时导出。';return false;}}
@@ -106,17 +106,75 @@
       return {author,proof,key:keys.find(k=>dataset?.decisions?.[k])||keys[0]};
     }).filter(x=>x.proof);
   }
+  const unitText=v=>v===true?'第一单位':v===false?'其他参与单位':'顺序待核';
+  const reviewValues={yes:true,no:false,pending:null};
+  function paperKeys(r) {
+    return [...new Set([r.doi&&'doi:'+doiOf(r.doi),r.pmid&&'pmid:'+pmidOf(r.pmid),...array(r.sourceKeys),r.id&&'id:'+r.id].filter(Boolean))];
+  }
+  function unitReview(r) {
+    const decisions=dataset?.unitDecisions||{};
+    const saved=paperKeys(r).map(k=>decisions[k]).filter(a=>a&&!(a.doi&&r.doi&&a.doi!==r.doi||a.pmid&&r.pmid&&a.pmid!==r.pmid)).sort((a,b)=>b.sequence-a.sequence);
+    return saved[0]?.choice==='reset'?null:saved[0]||null;
+  }
   function classify(r,org) {
-    const lines=linesFor(r,org);
-    const claims=lines.filter(l=>dataset.decisions[l.key]?.action==='确认');
-    return {r,lines,claims,unit:r.firstUnit===true?'第一单位':r.firstUnit===false?'参与单位':'第一单位待核'};
+    const lines=linesFor(r,org), claims=lines.filter(l=>dataset.decisions[l.key]?.action==='确认');
+    const manual=unitReview(r), firstUnit=manual?reviewValues[manual.choice]:r.firstUnit;
+    const included=Boolean(lines.length||manual&&typeof firstUnit==='boolean');
+    return {r,lines,claims,manual,firstUnit,included,unit:unitText(firstUnit)};
+  }
+  function unitEditor(w) {
+    const {r,manual}=w, key=paperKeys(r)[0], url=safeLink(manual?.link||'');
+    const callout=manual?'人工核定 · '+esc(unitText(reviewValues[manual.choice]))+'。'+esc(manual.note)+' <a href="'+esc(url)+'" target="_blank" rel="noopener noreferrer">查看依据</a>':'尚无人工核定。';
+    return '<details class="claim-unit-editor"><summary>核定第一单位</summary><p>来源判定 · '+unitText(r.firstUnit)+'。'+callout+'</p>'+
+      '<form class="claim-review" data-cform="unit" data-work="'+esc(key)+'"><label>机构顺位<select name="choice" required><option value="">请选择</option><option value="yes">本机构为第一单位</option><option value="no">本机构参与，非第一单位</option><option value="pending">顺序待核</option>'+(manual?'<option value="reset">撤回核定，恢复来源判断</option>':'')+'</select></label>'+
+      '<label>原文或署名页链接<input type="url" inputmode="url" name="link" required maxlength="1800" value="'+esc(url)+'" placeholder="https://…"></label>'+
+      '<label>原文署名及机构排序依据<input name="note" required maxlength="500" placeholder="例如：论文首页编号 1 为南方医院，编号 2 为……"></label>'+
+      '<button class="solid" type="submit">保存机构顺位</button></form></details>';
+  }
+  function recordUnit(form,fd) {
+    const key=form.dataset.work,r=dataset?.records.find(row=>paperKeys(row)[0]===key);
+    if(!r)return;
+    const choice=fd.get('choice'),link=safeLink(fd.get('link')),note=clean(fd.get('note'));
+    if(![...Object.keys(reviewValues),'reset'].includes(choice)||!link||!note||note.length>500||link.length>1800){
+      notice='请选择机构顺位，填写 HTTPS 原文链接和署名依据。';draw();return;
+    }
+    if(choice==='reset'&&!unitReview(r))return;
+    const action=choice==='reset'?'撤回顺位核定':unitText(reviewValues[choice]);
+    const item={type:'机构顺位',key,doi:r.doi,pmid:r.pmid,title:r.title,choice,action,sourceUnit:unitText(r.firstUnit),link,note,time:new Date().toISOString(),sequence:dataset.audit.length+1};
+    dataset.unitDecisions||={};
+    for(const k of paperKeys(r))dataset.unitDecisions[k]=item;
+    dataset.audit.push(item);viewedUnit=key;persist();notice='已保存机构顺位核定。';draw();
+  }
+  function shareURL(org,year) {
+    if(!window.location?.href||!textOrg(org.name))return '';
+    const u=new URL(window.location.href);
+    u.search='';u.hash='claims';
+    u.searchParams.set('org',org.name);u.searchParams.set('year',String(year));u.searchParams.set('source','epmc');
+    return u.href;
+  }
+  function openShared() {
+    if(!window.location?.href)return;
+    const u=new URL(window.location.href),p=u.searchParams;
+    if(u.hash!=='#claims'||p.get('source')!=='epmc')return;
+    const name=p.get('org')||'',y=p.get('year')||'';
+    if(!/^[\p{L}\p{M}\p{N} .,&'’()\-]{2,160}$/u.test(name)||!/^\d{4}$/.test(y)||+y<1500||+y>2100)return;
+    const org=textOrg(name),key=org&&org.id+'/'+y;
+    if(!org||sharedRoute===key)return;
+    sharedRoute=key;const match=d=>d?.year===+y&&d.providers?.epmc&&aliases(d.org).includes(norm(org.name));
+    if(match(dataset))return;
+    for(const row of recent.filter(x=>x.key.endsWith('/'+y))){
+      const saved=read('work/'+row.key,null);
+      if(match(saved)){dataset=hydrate(saved);query=dataset.org.name;chosenYear=dataset.year;method='all';page=0;notice='已恢复本机保存的机构年度结果。';write('last',row.key);draw();return;}
+    }
+    if(dataset&&(dataset.year!==+y||!aliases(dataset.org).includes(norm(org.name))))dataset=null;
+    query=org.name;chosenYear=+y;fetchYear(org,+y,false,'epmc');
   }
   function render() {return '<div id="claims-v3" class="claims-v3"></div>';}
   function mount(container) {
     ui=container.matches?.('#claims-v3')?container:container.querySelector('#claims-v3');
     if(!ui)return;
     ui.onclick=click;ui.onchange=change;ui.onsubmit=submit;
-    draw();
+    draw();openShared();
   }
   function draw() {
     if(!ui?.isConnected)return;
@@ -128,22 +186,22 @@
     ui.innerHTML=header+search+recentMenu+'<p class="claim-help">名册 '+roster.length+' 行，仅保存在本浏览器。每段任职可独占一行，复用同一 staff_id，填写机构、起止年份和署名别名。Europe PMC 可直接用英文机构地址检索，支持输入“南方医院”。仅同校或同城不足以确认医院署名。</p>'+options+noticeBox+(dataset?results():'')+(active?'<button class="outline" data-c="stop">停止本次请求</button>':'');
   }
   function results() {
-    const d=dataset, rows=d.records.map(r=>classify(r,d.org)), linked=rows.filter(x=>x.lines.length), picked=rows.filter(x=>x.claims.length), first=linked.filter(x=>x.r.firstUnit===true), nonfirst=linked.filter(x=>x.r.firstUnit===false);
-    const ordered=rows.filter(x=>method==='all'||method==='confirmed'&&x.claims.length||method==='address'&&!x.lines.length||method==='unclaimed'&&x.lines.length&&!x.claims.length);
+    const d=dataset, rows=d.records.map(r=>classify(r,d.org)), linked=rows.filter(x=>x.lines.length), picked=rows.filter(x=>x.claims.length), included=rows.filter(x=>x.included), first=included.filter(x=>x.firstUnit===true), nonfirst=included.filter(x=>x.firstUnit===false);
+    const ordered=rows.filter(x=>method==='all'||method==='confirmed'&&x.claims.length||method==='address'&&!x.lines.length||method==='order'&&x.included&&typeof x.firstUnit!=='boolean'||method==='unclaimed'&&x.lines.length&&!x.claims.length);
     const per=12,pages=Math.max(1,Math.ceil(ordered.length/per));
     page=Math.min(page,pages-1);
     const summary=[['已加载去重',rows.length],['匹配作者地址',linked.length],['已认领论文',picked.length],['地址待核',rows.length-linked.length]];
-    const split=linked.length?'第一单位 '+first.length+' 篇 · 其他参与 '+nonfirst.length+' 篇 · 顺序待核 '+(linked.length-first.length-nonfirst.length)+' 篇':'暂无已匹配作者地址';
+    const split=included.length?'第一单位 '+first.length+' 篇 · 其他参与 '+nonfirst.length+' 篇 · 顺序待核 '+(included.length-first.length-nonfirst.length)+' 篇（人工已核定 '+rows.filter(x=>x.manual).length+' 篇）':'暂无已定位的机构成果';
     const cards=summary.map(([label,count])=>'<div><span>'+label+'</span><b>'+count+'<small> 篇</small></b></div>').join('');
     const list=ordered.slice(page*per,(page+1)*per).map(w=>{
       const link=safeLink(w.r.url);
-      return '<details class="claim-paper" '+(reviewing&&w.lines.some(l=>l.key===reviewing)?'open':'')+'><summary><strong>'+esc(w.r.title)+'</strong><span>'+esc(w.lines.length?w.unit:'地址待核')+' · '+w.claims.length+' 人已认领</span></summary>'+
+      return '<details class="claim-paper" '+(viewedUnit===paperKeys(w.r)[0]||reviewing&&w.lines.some(l=>l.key===reviewing)?'open':'')+'><summary><strong>'+esc(w.r.title)+'</strong><span>'+esc(w.included||w.manual?w.unit:'地址待核')+(w.manual?'（人工核定）':'')+' · '+w.claims.length+' 人已认领</span></summary>'+
         '<p>'+esc(w.r.journal)+' · '+esc(w.r.sources.map(s=>providerNames[s]).join('、'))+' · '+(link?'<a href="'+esc(link)+'" target="_blank" rel="noopener noreferrer">论文原文</a>':'')+'</p>'+
-        (w.lines.length?w.lines.map(l=>lineUI(l)).join(''):'<p>来源命中了该机构，但逐位作者的地址和机构标识均未明确匹配。此篇暂不进入认领统计。</p>')+'</details>';
+        unitEditor(w)+(w.lines.length?w.lines.map(l=>lineUI(l)).join(''):'<p>尚未定位到作者个人的机构地址，人员认领待核。</p>')+'</details>';
     }).join('');
     return '<section class="claim-results panel"><h2>'+esc(d.org.name)+' · '+d.year+'</h2><p>年度期刊论文及综述。'+Object.entries(d.providers).map(([key,s])=>providerNames[key]+' 已读 '+s.scanned+' / '+s.total+' 条').join('；')+'。按 DOI、PMID 去重。'+(d.complete?'已读完所选来源。':'已加载部分记录。')+' '+esc(split)+'</p><div class="claim-stats">'+cards+'</div>'+
-       '<div class="claim-tools"><label>显示 <select data-c="filter">'+[['all','全部论文'],['unclaimed','地址匹配、待认领'],['confirmed','有已确认认领'],['address','机构地址待核']].map(([v,t])=>'<option value="'+v+'" '+(v===method?'selected':'')+'>'+t+'</option>').join('')+'</select></label>'+
-       providerControls(d)+'<button class="linkbtn" data-c="summary">导出年度汇总</button><button class="linkbtn" data-c="export">导出认领明细</button><button class="linkbtn" data-c="audit">导出操作记录</button></div>'+
+       '<div class="claim-tools"><label>显示 <select data-c="filter">'+[['all','全部论文'],['unclaimed','地址匹配、待认领'],['confirmed','有已确认认领'],['address','机构地址待核'],['order','第一单位顺序待核']].map(([v,t])=>'<option value="'+v+'" '+(v===method?'selected':'')+'>'+t+'</option>').join('')+'</select></label>'+
+       providerControls(d)+(shareURL(d.org,d.year)?'<a class="linkbtn" href="'+esc(shareURL(d.org,d.year))+'" target="_blank" rel="noopener noreferrer">本年度公开查询链接</a>':'')+'<button class="linkbtn" data-c="summary">导出年度汇总</button><button class="linkbtn" data-c="export">导出认领明细</button><button class="linkbtn" data-c="audit">导出操作记录</button></div>'+
        (list||'<p>当前范围暂无记录。</p>')+'<div class="claim-tools"><button class="outline" data-c="back" '+(!page?'disabled':'')+'>上一页</button><span>'+(page+1)+' / '+pages+'</span><button class="outline" data-c="forward" '+(page+1>=pages?'disabled':'')+'>下一页</button></div></section>';
   }
   function lineUI(line) {
@@ -222,10 +280,10 @@
         const positions=new Set(keys.flatMap(k=>index.has(k)?[index.get(k)]:[]));
         let wh=positions.size===1?[...positions][0]:undefined, old=records[wh];
         if(old&&(r.doi&&old.doi&&r.doi!==old.doi||r.pmid&&old.pmid&&r.pmid!==old.pmid)){wh=undefined;old=null;}
-        if(wh===undefined){wh=records.length;records.push({...r,byline:sourceAuthors(r),firstObserved:[r.firstUnit],sources:[name]});}
+        if(wh===undefined){wh=records.length;records.push({...r,byline:sourceAuthors(r),firstObserved:[r.firstUnit],sourceKeys:r.id?['id:'+r.id]:[],sources:[name]});}
         else{
           const flags=[...old.firstObserved,r.firstUnit], known=new Set(flags.filter(v=>typeof v==='boolean'));
-          records[wh]={...old,doi:old.doi||r.doi,pmid:old.pmid||r.pmid,byline:joinBylines(old.byline,sourceAuthors(r)),firstObserved:flags,
+          records[wh]={...old,doi:old.doi||r.doi,pmid:old.pmid||r.pmid,byline:joinBylines(old.byline,sourceAuthors(r)),firstObserved:flags,sourceKeys:[...new Set([...old.sourceKeys,...(r.id?['id:'+r.id]:[])])],
             firstUnit:known.size===1?[...known][0]:null,sources:[...new Set([...old.sources,name])]};
         }
         keys.forEach(k=>{if(!index.has(k))index.set(k,wh);});
@@ -276,27 +334,27 @@
       }
       const scanned=(more?prior.scanned:0)+rows.length;
       const providers={...stored?.providers,[p]:{records:[...records.values()],total,scanned,next:scanned<total?cursor:null,complete:scanned>=total}};
-      dataset=hydrate({org,year:+year,providers,decisions:stored?.decisions||{},audit:stored?.audit||[]});
+      dataset=hydrate({org,year:+year,providers,decisions:stored?.decisions||{},unitDecisions:stored?.unitDecisions||{},audit:stored?.audit||[]});
       notice=providerNames[p]+' 本批读取 '+rows.length+' 条。';query=org.name;chosenYear=+year;method='all';page=0;persist();
     }catch(e){if(serial===token)notice=e.message+' 已有年度记录保留。';}
     finally{if(serial===token){active=false;draw();}}
   }
   function exportSummary() {
     const d=dataset, items=d.records.map(r=>classify(r,d.org));
-    const matched=items.filter(w=>w.lines.length), first=matched.filter(w=>w.r.firstUnit===true).length, other=matched.filter(w=>w.r.firstUnit===false).length;
+    const matched=items.filter(w=>w.lines.length), included=items.filter(w=>w.included), first=included.filter(w=>w.firstUnit===true).length, other=included.filter(w=>w.firstUnit===false).length;
     const claimed=matched.filter(w=>w.claims.length), signed=claimed.flatMap(w=>w.claims.map(l=>d.decisions[l.key].person));
     download(d.org.id+'-'+d.year+'-summary.csv',[
-      ['机构','机构标识','发表年','来源','原始命中','已加载去重','完整性','作者地址匹配','第一单位','其他参与','顺序待核','地址待核','已认领论文','已确认署名','认领人数'],
-      [d.org.name,d.org.id,d.year,Object.keys(d.providers).map(k=>providerNames[k]).join(' + ')+' 期刊论文及综述',d.total,items.length,d.complete?'已读完':'部分',matched.length,first,other,matched.length-first-other,items.length-matched.length,claimed.length,signed.length,new Set(signed).size],
+      ['机构','机构标识','发表年','来源','原始命中','已加载去重','完整性','作者地址匹配','第一单位','其他参与','顺序待核','人工核定篇数','地址待核','已认领论文','已确认署名','认领人数'],
+      [d.org.name,d.org.id,d.year,Object.keys(d.providers).map(k=>providerNames[k]).join(' + ')+' 期刊论文及综述',d.total,items.length,d.complete?'已读完':'部分',matched.length,first,other,included.length-first-other,items.filter(w=>w.manual).length,items.length-matched.length,claimed.length,signed.length,new Set(signed).size],
     ]);
   }
   function exportRows(audit) {
-    const d=dataset, head=['机构','发表年','收录来源','PMID','DOI 或来源 ID','论文题名','机构顺位','作者署名','作者 ORCID','作者机构依据','建议人员','认领状态','已确认人员','核查说明','核查时间','论文链接'];
+    const d=dataset, head=['机构','发表年','收录来源','PMID','DOI 或来源 ID','论文题名','机构顺位','来源顺位','核定方式','顺位核定依据','顺位原文链接','顺位核定时间','作者署名','作者 ORCID','作者机构依据','建议人员','认领状态','已确认人员','核查说明','核查时间','论文链接'];
     let rows;
-    if(audit)rows=[['机构','发表年','记录标识','论文','署名人','决定','人员','核查说明','记录时间'],...d.audit.map(a=>[d.org.name,d.year,a.key,a.title,a.author,a.action,a.person,a.note,a.time])];
+    if(audit)rows=[['机构','发表年','记录标识','论文','类别','署名人','决定','人员','来源顺位','原文链接','核查说明','记录时间'],...d.audit.map(a=>[d.org.name,d.year,a.key,a.title,a.type||'人员认领',a.author,a.action,a.person,a.sourceUnit,a.link,a.note,a.time])];
     else{
       rows=[head];for(const r of d.records){
-        const w=classify(r,d.org),baseRow=[d.org.name,d.year,r.sources.map(k=>providerNames[k]).join(' + '),r.pmid||'',r.doi||r.id,r.title,w.lines.length?w.unit:'地址待核'];
+        const w=classify(r,d.org),baseRow=[d.org.name,d.year,r.sources.map(k=>providerNames[k]).join(' + '),r.pmid||'',r.doi||r.id,r.title,w.included||w.manual?w.unit:'地址待核',unitText(r.firstUnit),w.manual?'人工核定':'来源',w.manual?.note||'',w.manual?.link||'',w.manual?.time||''];
         if(!w.lines.length)rows.push([...baseRow,'','','','','地址待核','','','',r.url]);
         for(const l of w.lines){const dec=d.decisions[l.key];rows.push([...baseRow,l.author.name,l.author.orcid,l.proof,candidates(l.author,d.year,d.org,roster).map(p=>p.name+' · '+p.key).join(' | '),dec?.action||'待核',dec?.person||'',dec?.note||'',dec?.time||'',r.url]);}
       }
@@ -324,6 +382,7 @@
     const form=e.target.closest('form[data-cform]');if(!form)return;e.preventDefault();
     const fd=new FormData(form);
     if(form.dataset.cform==='search'){query=clean(fd.get('org'));chosenYear=Number(fd.get('year'));if(!active&&query){if(e.submitter?.value==='epmc'){const org=textOrg(query);if(org)fetchYear(org,chosenYear,false,'epmc');else{notice='请输入机构英文全名，南方医院也支持中文名称。';draw();}}else lookup();}return;}
+    if(form.dataset.cform==='unit'){recordUnit(form,fd);return;}
     if(form.dataset.cform!=='review'||!reviewing||!dataset)return;
     const action=e.submitter?.value, person=fd.get('staff'), note=clean(fd.get('note'));
     if(!['确认','排除','撤回'].includes(action)||!note)return;

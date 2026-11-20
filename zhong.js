@@ -91,7 +91,23 @@
       evidenceUrl: "https://orca.cardiff.ac.uk/id/eprint/172726/3/Zhong%20at%20al%20%282024%29.pdf",
       credits: [...commonCredits, "验证", "研究实施"]})
   ];
-  if (window.AtlasEvidenceV3) records.forEach(window.AtlasEvidenceV3.zhong);
+  // DOI-verified OpenAlex snapshots. Counts are specific to this source and observation date.
+  const observedAt = "2026-11-20";
+  const observations = {
+    "10.1007/s00170-026-18356-3": ["W7162298330", "T11301", "Advanced Surface Polishing Techniques", 0, [1187,1242,1382,1639]],
+    "10.1016/j.jmapro.2026.04.011": ["W7154485662", "T10705", "Additive Manufacturing Materials and Processes", 1, [6110,6345,7472,8695]],
+    "10.1007/s00366-025-02178-0": ["W4412461417", "T11694", "Fluid Dynamics Simulations and Interactions", 6, [943,1010,1070,1043]],
+    "10.1016/j.jmapro.2024.10.011": ["W4403391544", "T10732", "Laser Material Processing Techniques", 5, [2543,2660,2743,3067]]
+  };
+  for (const row of records) {
+    const [workId,topicId,topicName,citedByCount,annualCounts]=observations[row.doi];
+    const url="https://api.openalex.org/works/"+workId;
+    const query=new URLSearchParams({filter:"primary_topic.id:"+topicId+",from_publication_date:2022-01-01,to_publication_date:2025-12-31",group_by:"publication_year",per_page:"100"});
+    Object.assign(row,{openAlexId:workId,primaryTopicId:topicId,primaryTopicName:topicName,citedByCount,
+      citationEvidence:[{source:"OpenAlex",count:citedByCount,url,observedAt}],
+      topicAnnualBaseline:{id:topicId,from:2022,to:2025,annualCounts,observedAt,url:"https://api.openalex.org/works?"+query}});
+    window.AtlasEvidenceV3?.zhong(row);
+  }
   window.AtlasZhong = {
     name: authors[0], chineseName: "钟志豪", affiliation: "Cardiff University 博士 · 哈尔滨工业大学（深圳）",
     institution: cardiff, institutionSource: "https://nanjixiong.com/data/attachment/forum/202608/18/102626zmb8f9l8pzz8bs9m.webp",

@@ -30,7 +30,12 @@ let scope=localRead(SKEY,null);
 if(!scope||!Array.isArray(scope.records)||!["author","institution"].includes(scope.mode))scope=zhongScope("author");
 else if(scope.kind==="case"){
  const refreshed=zhongScope(scope.mode),previous=new Map(scope.records.map(r=>[r.id,r]));
- scope={...refreshed,...scope,records:refreshed.records.map(r=>({...r,...previous.get(r.id),byline:r.byline,keywords:r.keywords}))};
+ scope={...refreshed,...scope,records:refreshed.records.map(r=>{
+  const saved=previous.get(r.id)||{};
+  const merged={...r,...saved};
+  for(const k of ["byline","keywords","keywordEvidence","openAlexId","primaryTopicId","primaryTopicName","citationEvidence","citedByCount","topicAnnualBaseline"])if(Object.hasOwn(r,k))merged[k]=r[k];
+  return merged;
+ })};
 }
 if(scope.kind==="live"&&scope.mode==="author"&&scope.records.some(r=>!r.identityStatus)){for(const r of scope.records){if(r.identityStatus)continue;r.identityPending=true;r.identityStatus="review";r.identityEvidence="旧版记录未保留逐篇身份判断。可重新检索，或保留原文依据后手动计入。";}}
 let ranks=localRead(RKEY,window.AtlasZhong.ranks);
@@ -381,7 +386,7 @@ async function parseFile(inputId){
 }
 async function importBib(){
  try{
-  const {file,text}=await parseFile("bib-file"),records=window.AtlasImport.parseBibliography(text),name=byId("import-name").value.trim()||file.name.replace(/\.[^.]+$/,"");
+  const {file,text}=await parseFile("bib-file"),records=window.AtlasImport.parseBibliography(text).map(r=>({...r,identityPending:true,identityStatus:"review",identityEvidence:"书目文件中的作者归属待核。"})),name=byId("import-name").value.trim()||file.name.replace(/\.[^.]+$/,"");
   dia("打开导入档案",`<p>已解析 <b>${records.length}</b> 篇文献。确认后切换到「${esc(name)}」，可在论文清单逐篇核查署名。</p><div class="buttonset"><button class="solid" id="confirm-bib">打开此档案</button><button class="outline" data-act="close-dialog">返回</button></div>`);
   byId("confirm-bib").onclick=()=>{notice="";query="";affiliation="";closeDia();setScope({kind:"import",mode:"author",name,affiliation:"个人导入书目",source:"用户导入书目",total:records.length,candidate:{name},records,note:`书目文件 ${file.name} 含 ${records.length} 篇独立文献。署名、通讯与单位信息以逐篇核查记录为准。`});};
  }catch(e){showStatus("bib-note",e.message,true);}

@@ -23,6 +23,9 @@
 .claims-v3 .claim-paper summary span { display: block; margin: .35rem 0 0 1rem; color: #526058; font-size: .86rem; }
 .claims-v3 .claim-author { border-left: 3px solid #9dbba9; padding: 8px 14px; margin: 12px 0; background: #f7f9f7; }
 .claims-v3 .claim-author p { margin: .4rem 0; }
+.claims-v3 .claim-unit-editor { padding: 9px 12px; background: #eef4f0; border-radius: 6px; margin: 10px 0; }
+.claims-v3 .claim-unit-editor summary { color: var(--teal, #18533f); font-weight: 600; }
+.claims-v3 .claim-unit-editor p { margin: .5rem 0; }
 .claims-v3 .claim-review { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; padding: 10px 0; }
 .claims-v3 .claim-review label { flex: 1 1 180px; }
 .claims-v3 :is(button, input, select, summary):focus-visible { outline: 2px solid var(--teal, #18533f); outline-offset: 3px; }
