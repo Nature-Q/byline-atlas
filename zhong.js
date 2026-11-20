@@ -50,13 +50,13 @@
 
   const authors = ["Zhihao Zhong", "Sivakumar Kulasegaram", "Emmanuel Brousseau"];
   const commonCredits = ["研究构思", "方法设计", "软件开发", "正式分析", "初稿撰写"];
-  function paper({title, short, doi, year: publicationYear, journalIndex, corresponding, evidenceUrl, credits}) {
+  function paper({title, short, doi, year: publicationYear, journalIndex, corresponding, evidenceUrl, credits, keywords}) {
     const journal = journals[journalIndex];
     return {
       id: doi, title, short, doi, url: "https://doi.org/" + doi, journal: journal.journal,
       year: publicationYear, issn: [...journal.issn], jif: journal.jif, jifYear: journal.year, jifSource: journal.jifSource,
       workType: "article", roles: ["first"], roleUnknown: false, firstUnit: true,
-      authors: [...authors], correspondingAuthors: [corresponding], firstInstitution: cardiff,
+      authors: [...authors], correspondingAuthors: [corresponding], firstInstitution: cardiff, keywords,
       source: "期刊原文与 Cardiff ORCA", evidenceUrl,
       evidence: "钟志豪列第一位。唯一通讯作者为 " + corresponding + "。三位作者的唯一署名单位均为 Cardiff University 工程学院。原文列出的钟志豪贡献包括" + credits.join("、") + "。",
       identityStatus: "supported", identityPending: false, identityBasis: "publication",
@@ -69,24 +69,29 @@
   const records = [
     paper({year: 2026, journalIndex: 2, short: "激光抛光后的表面粗糙度预测",
       title: "A robust and effective roughness prediction model for laser polishing", doi: "10.1007/s00170-026-18356-3",
+      keywords: ["Laser polishing", "Roughness prediction", "SPH", "Melt depth"],
       corresponding: authors[1], evidenceUrl: "https://link.springer.com/article/10.1007/s00170-026-18356-3#author-information",
       credits: [...commonCredits, "可视化"]}),
     paper({year: 2026, journalIndex: 0, short: "熔池与凝固微结构的耦合模拟",
       title: "An integrated mesh-free computational framework for coupled melt pool dynamics and solidification microstructure in single-track LPBF",
       doi: "10.1016/j.jmapro.2026.04.011", corresponding: authors[2],
+      keywords: ["Laser powder bed fusion", "Smooth particle hydrodynamics", "Melt track state", "Microstructure"],
       evidenceUrl: "https://orca.cardiff.ac.uk/id/eprint/186493/1/1-s2.0-S1526612526003683-main.pdf",
       credits: [...commonCredits, "可视化"]}),
     paper({year: 2025, journalIndex: 1, short: "激光加工中的熔池动力学",
       title: "A novel smooth particle hydrodynamics framework for modelling melting pool dynamics in laser processing",
       doi: "10.1007/s00366-025-02178-0", corresponding: authors[1],
+      keywords: ["Laser micro texturing", "Laser powder bed fusion", "SPH", "Melting pool dynamics", "Surface tension", "Marangoni force"],
       evidenceUrl: "https://link.springer.com/article/10.1007/s00366-025-02178-0#author-information",
       credits: [...commonCredits, "可视化"]}),
     paper({year: 2024, journalIndex: 0, short: "铝的脉冲激光烧蚀建模",
       title: "An enhanced meshless numerical methodology for modelling pulsed laser ablation of aluminium",
       doi: "10.1016/j.jmapro.2024.10.011", corresponding: authors[2],
+      keywords: ["Pulsed laser ablation depth", "Smooth Particle Hydrodynamics (SPH)", "Material phase explosion", "Material evaporation", "Laser-aluminium interaction"],
       evidenceUrl: "https://orca.cardiff.ac.uk/id/eprint/172726/3/Zhong%20at%20al%20%282024%29.pdf",
       credits: [...commonCredits, "验证", "研究实施"]})
   ];
+  if (window.AtlasEvidenceV3) records.forEach(window.AtlasEvidenceV3.zhong);
   window.AtlasZhong = {
     name: authors[0], chineseName: "钟志豪", affiliation: "Cardiff University 博士 · 哈尔滨工业大学（深圳）",
     institution: cardiff, institutionSource: "https://nanjixiong.com/data/attachment/forum/202608/18/102626zmb8f9l8pzz8bs9m.webp",

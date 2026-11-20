@@ -14,13 +14,22 @@
   const unique = values => [...new Set(values.filter(Boolean))];
   const doiValue = value => compact(value).replace(/^https?:\/\/(?:dx\.)?doi\.org\//i,'').replace(/^doi:\s*/i,'').toLowerCase();
   const orcidValue = value => compact(value).replace(/^https?:\/\/orcid\.org\//i,'').replace(/\/$/,'').toUpperCase();
-  const validOrcid = value => /^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/.test(value);
+  function validOrcid(value) {
+    if (!/^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$/.test(value)) return false;
+    const digits = value.replace(/-/g, '');
+    let sum = 0;
+    for (const digit of digits.slice(0, 15)) sum = (sum + Number(digit)) * 2;
+    const check = (12 - sum % 11) % 11;
+    return (check === 10 ? 'X' : String(check)) === digits[15];
+  }
   const localOrgs = {
     '北京大学': 'Peking University', '清华大学': 'Tsinghua University', '浙江大学': 'Zhejiang University',
     '上海交通大学': 'Shanghai Jiao Tong University', '复旦大学': 'Fudan University',
     '中山大学': 'Sun Yat-sen University', '南京大学': 'Nanjing University', '武汉大学': 'Wuhan University',
     '中国科学院': 'Chinese Academy of Sciences', '中国科学院大学': 'University of Chinese Academy of Sciences',
     '卡迪夫大学': 'Cardiff University', '香港大学': 'University of Hong Kong',
+    '南方医院': 'Nanfang Hospital', '南方医科大学南方医院': 'Nanfang Hospital',
+    '哈尔滨工业大学': 'Harbin Institute of Technology', '哈尔滨工业大学（深圳）': 'Harbin Institute of Technology, Shenzhen',
   };
 
   async function request(base, path, params = {}, xml = false) {
@@ -137,13 +146,14 @@
  const canon=v=>String(v||"").normalize("NFKD").replace(/\p{M}/gu,"").toLowerCase().replace(/[^\p{L}\p{N}]+/gu," ").trim();
  const matches=(work.authorships||[]).filter(a=>id(a.author?.id)===id(candidate.id));
  const raw=orcid(authorship?.raw_orcid),target=orcid(candidate.requestedOrcid);
- const observed=[...new Set([...(candidate.observedOrcids||[]),...(authorship?.author?.observed_orcids||[])].map(orcid).filter(Boolean))];
+ const observed=[...new Set([candidate.orcid,...(candidate.observedOrcids||[]),...(authorship?.author?.observed_orcids||[])].map(orcid).filter(validOrcid))];
  const result=(pending,basis,evidence)=>({identityPending:pending,identityStatus:pending?"review":"supported",identityBasis:basis,identityEvidence:evidence});
  if(matches.length!==1||!authorship)return result(true,"review","逐篇记录无法唯一定位该作者的署名行。");
  if(raw&&(work.authorships||[]).filter(a=>orcid(a.raw_orcid)===raw).length>1)return result(true,"review","同一篇论文的多个署名行登记了同一个原始 ORCID。");
  if(!target&&raw&&observed.length&&!observed.includes(raw))return result(true,"review","逐篇原始 ORCID 与所选作者档案的标识列表不一致。");
  if(target&&raw&&raw!==target)return result(true,"review","逐篇 ORCID "+raw+" 与检索的 "+target+" 不同。");
  if(target&&raw===target)return result(false,"work-orcid","逐篇原始 ORCID 与检索标识一致："+raw+"。");
+ if(!target&&raw&&observed.length===1&&observed[0]===raw)return result(false,"work-orcid","个人档案唯一 ORCID 与本篇署名的原始 ORCID 一致："+raw+"。");
  const hint=String(candidate.affiliationHint||"").trim();const needle=canon(localOrgs[hint]||hint);
  const known={cardiff:"cardiff university","卡迪夫":"cardiff university","university of cardiff":"cardiff university","北大":"peking university","ucl":"university college london","卡迪夫大学":"cardiff university"};
  const wanted=known[needle]||needle;
@@ -252,23 +262,45 @@
     const keyed = Boolean(apiKey);
     const cursor = compact(options.cursor) || (keyed ? '*' : '');
     if (!keyed && cursor && cursor !== '*') throw new Error('继续获取下一页需要配置 OpenAlex API key 并重新检索。');
-    const filters = [field + ':' + id, 'type:article|review', 'primary_location.source.type:journal'];
+    const filters = [field + ':' + id];
+    if (!options.allTypes) filters.push('type:article|review', 'primary_location.source.type:journal');
     if (year) filters.push('publication_year:' + year);
     const params = {
       filter: filters.join(','),
       sort:'publication_date:desc', per_page:MAX_WORKS,
-      select:'id,title,publication_year,type,primary_location,doi,ids,authorships,corresponding_author_ids',
+      select:'id,title,publication_year,type,primary_location,doi,ids,authorships,corresponding_author_ids,cited_by_count,keywords,primary_topic,counts_by_year,citation_normalized_percentile',
     };
     if (keyed) params.cursor = cursor;
     const result = await request(OA, 'works', params);
     if (!Array.isArray(result.results) || !Number.isFinite(result.meta?.count)) throw new Error('OpenAlex 返回的数据不完整，请重试。');
-    const records = result.results.map(w => normalizeWork(w, candidate, isOrg));
+    const records = result.results.map(work => {
+      const row = normalizeWork(work, candidate, isOrg);
+      return window.AtlasEvidenceV3?.openAlex(work, row) || row;
+    });
     const total = result.meta.count;
     const returnedCursor = result.meta.next_cursor;
-    const canAdvance = keyed && records.length > 0 && total > records.length;
+    const prior = Number.isSafeInteger(options.scanned) && options.scanned >= 0 ? options.scanned :
+      !cursor || cursor === '*' ? 0 : null;
+    const remaining = prior === null ? records.length === MAX_WORKS : prior + records.length < total;
+    const canAdvance = keyed && records.length > 0 && remaining;
     const nextCursor = canAdvance && typeof returnedCursor === 'string' && returnedCursor && returnedCursor !== cursor ? returnedCursor : null;
-    const source = 'OpenAlex · ' + (year ? year + ' 年' : '') + '期刊论文及综述，按发表日期倒序';
-    return {records, total, source, limited:total > records.length, nextCursor};
+    const source = 'OpenAlex · ' + (year ? year + ' 年' : '') + (options.allTypes ? '全部收录类型' : '期刊论文及综述') + '，按发表日期倒序';
+    const limited = Boolean(nextCursor) || (prior !== null && remaining);
+    return {records, total, sourceHits:total, scanned:records.length, source, limited, nextCursor};
+  }
+
+  async function topicYearCounts(topicId, fromYear, toYear) {
+    const topic = compact(topicId).replace(/^https?:\/\/openalex\.org\//i, '').toUpperCase();
+    const from = Number(fromYear), to = Number(toYear);
+    if (!/^T\d+$/.test(topic) || !Number.isInteger(from) || !Number.isInteger(to) ||
+        from < 1000 || to > 9999 || to < from || to - from >= 50) throw new Error('主题或统计年份范围无效。');
+    const data = await request(OA, 'works', {
+      filter:'primary_topic.id:' + topic + ',from_publication_date:' + from + '-01-01,to_publication_date:' + to + '-12-31',
+      group_by:'publication_year', per_page:100
+    });
+    if (!Array.isArray(data.group_by) || data.group_by.some(row => !row || !/^\d{4}$/.test(row.key) ||
+        !Number.isSafeInteger(row.count) || row.count < 0)) throw new Error('OpenAlex 的主题年度计数缺少有效数据。');
+    return data.group_by;
   }
 
   const selectAll = (node, selector) => [...node.querySelectorAll(selector)];
@@ -418,5 +450,6 @@
     return verified;
   }
 
-  window.ScholarSource = Object.freeze({search, load, verify, hasKey() { return Boolean(apiKey); }, setKey(value) { apiKey = compact(value); }});
+  window.ScholarSource = Object.freeze({search, load, verify, topicYearCounts, hasKey() { return Boolean(apiKey); }, setKey(value) { apiKey = compact(value); }});
 })();
+

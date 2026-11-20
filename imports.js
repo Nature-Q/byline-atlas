@@ -1,4 +1,3 @@
-
 (function () {
   "use strict";
 
@@ -222,7 +221,8 @@
       title: ["title", "题名", "标题", "篇名", "论文题目"],
       journal: ["publication", "journal", "source title", "期刊", "出版物", "刊名"],
       year: ["year", "年份", "年", "发表年份"], doi: ["doi"], issn: ["issn", "刊号"],
-      url: ["url", "link", "链接"], author: ["authors", "author", "作者"]
+      url: ["url", "link", "链接"], author: ["authors", "author", "作者"],
+      cites: ["cited by", "cites", "citedby", "被引次数", "引用次数"]
     }).map(([key, aliases]) => [key, chooseColumn(names, aliases, key === "title")]));
     return rows.map(row => Object.fromEntries(Object.entries(fields).map(([key, col]) => [key, row[col] || ""])));
   }
@@ -239,6 +239,8 @@
       const yearValue = Number(tidy(entry.year));
       const year = Number.isInteger(yearValue) && yearValue >= 1000 && yearValue <= currentYear() + 1 ? yearValue : null;
       const doi = doiValue(entry.doi) || doiValue(entry.url);
+      const citesText = String(entry.cites ?? entry.citedby ?? entry.cited_by ?? "").trim();
+      const citations = /^(?:\d+|\d{1,3}(?:,\d{3})+)$/.test(citesText) ? Number(citesText.replace(/,/g,"")) : null;
       const url = doi ? "https://doi.org/" + doi : safeUrl(entry.url);
       const issn = [...new Set((String(entry.issn || "").match(/\b\d{4}[- ]?\d{3}[\dX]\b/gi) || []).map(normalizeIssn).filter(Boolean))];
       const identity = doi || JSON.stringify([folded(title), year, folded(journal), folded(humanText(entry.author))]);
@@ -255,7 +257,8 @@
       for (let suffix = 2; usedIDs.has(id); suffix++) id = base + "-" + suffix;
       usedIDs.add(id);
       result.push({
-        id, title, journal, year, doi, url, issn,
+        id, title, journal, year, doi, url, issn, importAuthorText: humanText(entry.author),
+        ...(Number.isSafeInteger(citations) ? {citedByCount:citations} : {}),
         workType: entry.type || "unknown", roles: [], roleUnknown: true, firstUnit: null,
         source: bib ? "书目导入 · BibTeX" : "书目导入 · CSV",
         evidence: "文件提供题名等书目信息，尚待核对作者身份、等贡献声明、通讯标记及第一单位。"
@@ -317,4 +320,3 @@
   window.AtlasImport = {parseRankCSV, template, parseBibliography, classifyJournal, normalizeIssn,
     journalCatalogue: catalogue.map(([group, title]) => ({group, title}))};
 })();
-

@@ -8,7 +8,8 @@ const safeLink = u => {try{const v=new URL(u);return ["https:","http:"].includes
 const external = (u,label) => safeLink(u) ? `<a class="anchor" href="${esc(safeLink(u))}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`:"";
 const paths={grid:"M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z",list:"M8 6h12 M8 12h12 M8 18h12 M4 6h.1 M4 12h.1 M4 18h.1",upload:"M12 15V3 M7.5 7.5 12 3l4.5 4.5 M4 14v5a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-5",book:"M3 4.8c3.7-.9 6.5-.4 9 1.4 2.5-1.8 5.3-2.3 9-1.4v14c-3.7-.9-6.5-.5-9 1.2-2.5-1.7-5.3-2.1-9-1.2z M12 6v14",user:"M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4.5 20c.7-4.2 3.8-6.2 7.5-6.2s6.8 2 7.5 6.2",institution:"M3 9l9-6 9 6z M4 20h16 M6 11v6 M10 11v6 M14 11v6 M18 11v6",search:"M15.8 15.8l4.6 4.6 M17 10.4a6.6 6.6 0 1 1-13.2 0A6.6 6.6 0 0 1 17 10.4z",arrow:"M4 12h15 M13 6l6 6-6 6",down:"M12 3v13 M7 11l5 5 5-5 M4 17v3h16v-3",calendar:"M4 6h16v14H4z M8 3v5 M16 3v5 M4 10h16",file:"M6 3h8l5 5v13H6z M14 3v5h5 M9 13h7 M9 17h5",pen:"M4 20l2-6L16.5 3.5a1.5 1.5 0 0 1 2 0l2 2a1.5 1.5 0 0 1 0 2L10 18z M14 6l4 4",mail:"M3 5h18v14H3z M3 6l9 7 9-7",layers:"M2.5 8 12 3.5 21.5 8 12 12.5z M2.5 12l9.5 4.5 9.5-4.5 M2.5 16l9.5 4.5 9.5-4.5",flag:"M5 21V4 M5 4c5-3 8 3 14 0v10c-5 3-9-3-14 0",check:"M4 11l5 5L20 5",help:"M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M9 9a3 3 0 0 1 6 .2c0 2.2-3 2.6-3 4.9 M12 17h.01",menu:"M3 5h18 M3 12h18 M3 19h18",x:"M5 5l14 14 M19 5 5 19",filter:"M3 5h18 M6 12h12 M9 19h6",building:"M4 21V8h7v13 M11 3h8v18 M2 21h20 M14 7h2 M14 11h2 M14 15h2 M6.5 12h2 M6.5 16h2"};
 const icon=name=>`<svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="${paths[name]||paths.file}"/></svg>`;
-const pageMap={search:["检索学者与机构","search"],metrics:["科研贡献指标","layers"],overview:["成果概览","grid"],papers:["论文清单","list"],imports:["数据导入","upload"],method:["统计口径","book"]};
+const pageMap={search:["多源检索","search"],overview:["成果概览","grid"],papers:["论文清单","list"],profile:["学者画像","user"],metrics:["署名与合作","layers"],claims:["机构年度认领","institution"],ai:["AI 解读","book"],imports:["数据导入","upload"],classic:["单库检索","search"],method:["统计口径","book"]};
+pageMap.zhong=["钟志豪 · 学者画像","user"];
 const roleNames={first:"首位作者",cofirst:"共同一作",corresponding:"通讯作者",cocorresponding:"共同通讯"};
 const familyNames={flagship:"CNS 主刊",family:"系列期刊",other:"其他期刊",unknown:"目录未覆盖"};
 const unitText=v=>v===true?"第一单位":v===false?"非第一单位":"单位待核";
@@ -27,6 +28,10 @@ function zhongScope(mode="author") {
 function sampleScope(mode="author"){const item=mode==="institution"?window.AtlasOrgSample:sample;return {mode,kind:"sample",name:item.name,affiliation:item.affiliation,note:item.note,total:item.records.length,source:item.source,candidate:{id:"",name:item.name,affiliation:item.affiliation,orcid:item.orcid||"",aliases:[item.name]},records:item.records.map(r=>({...r,roles:[...r.roles]}))};}
 let scope=localRead(SKEY,null);
 if(!scope||!Array.isArray(scope.records)||!["author","institution"].includes(scope.mode))scope=zhongScope("author");
+else if(scope.kind==="case"){
+ const refreshed=zhongScope(scope.mode),previous=new Map(scope.records.map(r=>[r.id,r]));
+ scope={...refreshed,...scope,records:refreshed.records.map(r=>({...r,...previous.get(r.id),byline:r.byline,keywords:r.keywords}))};
+}
 if(scope.kind==="live"&&scope.mode==="author"&&scope.records.some(r=>!r.identityStatus)){for(const r of scope.records){if(r.identityStatus)continue;r.identityPending=true;r.identityStatus="review";r.identityEvidence="旧版记录未保留逐篇身份判断。可重新检索，或保留原文依据后手动计入。";}}
 let ranks=localRead(RKEY,window.AtlasZhong.ranks);
 if(!Array.isArray(ranks))ranks=window.AtlasZhong.ranks;
@@ -47,17 +52,30 @@ function impactYearsControl() {
 }
 const defaultFilters=()=>({text:"",role:"",family:"",minJif:"",system:"",edition:"",category:"",quartile:"",kind:"",status:""});
 let filters=defaultFilters(),year="",searchMode=scope.mode,query="",affiliation="",busy=false,requestSeq=0,candidates=[],notice="",toastTimer,currentRecord=null,hasKey=false;
-const page=()=>Object.hasOwn(pageMap,location.hash.slice(1))?location.hash.slice(1):"overview";
+const page=()=>Object.hasOwn(pageMap,location.hash.slice(1))?location.hash.slice(1):"search";
 function toast(message){const e=byId("toast");e.textContent=message;e.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>e.classList.remove("show"),3200);}
 function remember(){storeLocal(SKEY,scope);}
 const HISTKEY="byline-atlas-recent-v1";
-const identityKey=v=>[v.mode,v.kind,v.candidate?.id||v.name,v.candidate?.requestedOrcid||"",v.candidate?.affiliationHint||"",v.liveYear||""].join("|");
+const identityKey=v=>v.kind==="federated"&&v.archiveId?[v.kind,v.archiveId,v.liveYear||""].join("|"):[v.mode,v.kind,v.candidate?.id||v.name,v.candidate?.requestedOrcid||"",v.candidate?.affiliationHint||"",v.liveYear||""].join("|");
 function recent(){const saved=localRead(HISTKEY,[]);return Array.isArray(saved)?saved.filter(v=>Array.isArray(v?.records)):[];}
-function setScope(v){
+function setScope(v,destination="overview"){
+ if(v.kind==="federated" && v.mode==="author")window.AtlasAuthorID.assign(v);
  const key=identityKey(v),oldKey=identityKey(scope),past=recent(),snapshot=key===oldKey?scope:past.find(p=>identityKey(p)===key);
- if(snapshot && v.kind!=="import"){const edits=new Map(snapshot.records.filter(r=>r.review||r.excluded||r.identityReview||r.verificationUrl).map(r=>[r.id,r]));v.records=v.records.map(r=>edits.has(r.id)?{...r,...edits.get(r.id)}:r);}
+ if(snapshot && v.kind!=="import"){
+  const edits=new Map();
+  const recordKeys=r=>[r.id,r.doi&&"doi:"+r.doi.toLowerCase(),...(r.provenance||[]).filter(p=>p.id).map(p=>p.source+":"+p.id)].filter(Boolean);
+  for(const r of snapshot.records.filter(r=>r.review||r.excluded||r.identityReview||r.verificationUrl)) for(const id of recordKeys(r)) edits.set(id,r);
+  v.records=v.records.map(r=>{
+   const old=recordKeys(r).map(k=>edits.get(k)).find(Boolean);
+   if(!old || (r.review?.date && r.review.date >= (old.review?.date||"")))return r;
+   const fields=["excluded"];
+   if(old.review||old.verificationUrl)fields.push("review","roles","roleUnknown","firstUnit","verificationUrl","evidenceUrl","contribution");
+   if(old.identityReview)fields.push("identityStatus","identityPending","identityBasis","identityReview","identityEvidence","identityEvidenceUrl");
+   return {...r,...Object.fromEntries(fields.filter(k=>Object.hasOwn(old,k)).map(k=>[k,old[k]]))};
+  });
+ }
  if(key!==oldKey)storeLocal(HISTKEY,[scope,...past.filter(p=>![key,oldKey].includes(identityKey(p)))].slice(0,3));
- scope=v;year="";filters=defaultFilters();searchMode=v.mode;remember();if(page()==="overview"){render();}else{location.hash="overview";}
+ scope=v;year="";filters=defaultFilters();searchMode=v.mode;remember();if(page()===destination){render();}else{location.hash=destination;}
 }
 function years(){return [...new Set(scope.records.map(r=>r.year).filter(Boolean))].sort((a,b)=>b-a);}
 const scoped=()=>scope.records.filter(r=>!r.excluded&&!r.identityPending&&(!year||String(r.year)===String(year)));
@@ -111,8 +129,8 @@ function tags(r){
 }
 function drawNav(){
  const navItem=(n)=>`<button class="nav-item${page()===n?" active":""}" data-page="${n}" ${page()===n?'aria-current="page"':""}>${icon(pageMap[n][1])}<span>${pageMap[n][0]}</span></button>`;
- byId("nav").innerHTML=["search","overview","metrics","papers"].map(navItem).join("");
- byId("support-nav").innerHTML=["imports","method"].map(navItem).join("");
+ byId("nav").innerHTML=["search","overview","papers","profile","metrics","claims","ai"].map(navItem).join("");
+ byId("support-nav").innerHTML=["imports","classic","method"].map(navItem).join("");
  byId("page-name").textContent=pageMap[page()][0];
  byId("guide").innerHTML=icon("help")+"使用指南";byId("menu-btn").innerHTML=icon("menu");byId("dia-close").innerHTML=icon("x");
 }
@@ -126,7 +144,7 @@ function stats(rows){
  return scope.mode==="institution"?[
  ["收录论文",n,"本次统计范围","file","#e6eee7","#376c50"],["第一单位",count(rows,r=>r.firstUnit===true),"按当前机构口径","institution","#e1eee7","#34664e"],["非第一单位",count(rows,r=>r.firstUnit===false),"参与署名的其他论文","layers","#faecdf","#99623b"],["单位待核",count(rows,r=>r.firstUnit==null),"缺少明确地址顺序","flag","#eeebf4","#736489"]
  ]:[
- ["收录论文",n,"当前范围内的独立论文","file","#e7eee6","#326046"],["第一作者",count(rows,isLead),`首位 ${count(rows,r=>has(r,"first"))} · 共一 ${count(rows,r=>has(r,"cofirst"))}`,"pen","#e0eee7","#30654e"],[scope.kind==="live"?"已标记通讯作者":"通讯作者",count(rows,isCorr),`其中共同通讯 ${count(rows,r=>has(r,"cocorresponding"))} 篇${rows.some(r=>!isCorr(r)&&r.roleUnknown)?" · 另有署名待核记录":""}`,"mail","#f8eadc","#a2683d"],["一作或通讯",count(rows,r=>isLead(r)||isCorr(r)),"重叠署名按篇去重","layers","#efebf4","#716282"]
+ ["收录论文",n,"当前范围内的独立论文","file","#e7eee6","#326046"],["第一作者",count(rows,isLead),`首位 ${count(rows,r=>has(r,"first"))} · 共一 ${count(rows,r=>has(r,"cofirst"))}`,"pen","#e0eee7","#30654e"],[["live","federated"].includes(scope.kind)?"已标记通讯作者":"通讯作者",count(rows,isCorr),`其中共同通讯 ${count(rows,r=>has(r,"cocorresponding"))} 篇${rows.some(r=>!isCorr(r)&&r.roleUnknown)?" · 另有署名待核记录":""}`,"mail","#f8eadc","#a2683d"],["一作或通讯",count(rows,r=>isLead(r)||isCorr(r)),"重叠署名按篇去重","layers","#efebf4","#716282"]
  ];
 }
 function hero(){
@@ -163,7 +181,7 @@ function table(rows){
  if(!rows.length)return '<div class="empty">当前条件下没有论文。可调整筛选或导入书目。</div>';
  return `<div class="table-scroll"><table class="pub-table"><thead><tr><th>论文 / 期刊</th><th>年份</th><th>${scope.mode==="institution"?"机构归属":"作者署名"}</th><th>JIF · ${esc(impactYear)}</th><th>期刊类别</th>${ranks.length?`<th>期刊分区</th>`:""}<th>证据</th></tr></thead><tbody>${rows.map(r=>{
   const family=window.AtlasImport.classifyJournal(r);
-  return `<tr><td><button class="titlebtn" data-record="${rowKey(r)}">${esc(r.short||r.title)}</button><div class="journal">${esc(r.journal||"期刊待核")}</div></td><td class="yearcell">${esc(r.year||"—")}</td><td><div class="tags">${tags(r)}</div></td><td class="impact-cell">${impactCell(r)}</td><td>${badge(familyNames[family],family==="unknown"||family==="other"?"dim":"")}</td>${ranks.length?`<td class="muted">${esc(rankSelection(r).map(x=>x.system+" "+x.year+" · "+x.category+" "+(x.system==="JCR"?"Q"+x.quartile:x.quartile+"区")).join(" / ")||(r.issn.length?"未匹配":"待补 ISSN"))}</td>`:""}<td><button class="linkbtn" data-record="${rowKey(r)}">核查</button></td></tr>`;
+  return `<tr><td><button class="titlebtn" data-record="${rowKey(r)}">${esc(r.short||r.title)}</button><div class="journal">${esc(r.journal||"期刊待核")}</div></td><td class="yearcell">${esc(r.year||"—")}</td><td><div class="tags">${tags(r)}</div></td><td class="impact-cell">${impactCell(r)}</td><td>${badge(familyNames[family],family==="unknown"||family==="other"?"dim":"")}</td>${ranks.length?`<td class="muted">${esc(rankSelection(r).map(x=>x.system+" "+x.year+" · "+x.category+" "+(x.system==="JCR"?"Q"+x.quartile:x.quartile+"区")).join(" / ")||(r.issn?.length?"未匹配":"待补 ISSN"))}</td>`:""}<td><button class="linkbtn" data-record="${rowKey(r)}">核查</button></td></tr>`;
  }).join("")}</tbody></table></div>`;
 }
 function paperList(rows) {
@@ -189,6 +207,7 @@ function overview() {
   <div class="result-footer"><span>期刊影响因子 · ${impactYear} 指标年</span><button class="linkbtn" data-page="papers">全部论文与分区 ${icon("arrow")}</button></div></section>
   <p class="scope-line">${esc(scope.note||"")} ${scope.kind==="case"?external(window.AtlasZhong.sourceUrl,"Cardiff 作者目录")+"　"+external(window.AtlasZhong.institutionSource,"深圳会议署名")+(scope.mode==="author"?'　<a href="./zhong.html">查看精简结果卡片</a>':""):""}</p>
   ${pending?`<div class="notice">${pending} 条成果身份待核。 <button class="linkbtn" data-act="identity-list">查看待核论文</button></div>`:""}
+  <div class="buttonset workspace-links">${scope.mode==="author"?'<a href="#profile">查看学者画像与单位时间线</a>':'<a href="#claims">进入机构年度认领</a>'}<a href="#papers">逐篇核对来源与署名</a></div>
   ${window.AtlasContributions.render(rows,scope)}
   <div class="analysis"><section class="panel chart-panel"><div class="panel-head"><h2>年度发表趋势</h2><span class="tiny">按发表年</span></div>${window.AtlasCharts.trend(rows,scope.mode)}</section><section class="panel chart-panel"><div class="panel-head"><h2>${scope.mode==="institution"?"第一单位分布":"署名构成"}</h2></div>${window.AtlasCharts.composition(rows,scope.mode)}</section></div>`;
 }
@@ -208,8 +227,9 @@ function papers(){const rows=filtered();
  <div class="section-head"><strong class="active-count" id="paper-count">显示 ${rows.length} 篇</strong></div><div id="papers-table">${table(rows)}</div></section><details class="filtered-contributions"><summary>查看筛选范围内的贡献与合作指标</summary><div id="filtered-contributions">${window.AtlasContributions.render(rows.filter(r=>!r.identityPending&&!r.excluded),scope)}</div></details>${!ranks.length?'<p class="scope-line">当前没有已导入的分区数据。导入有权使用的版本后，可按 ISSN、学科和区位查询。</p>':""}${continuation()}`;
 }
 function continuation(){
+ if(scope.kind==="federated" && scope.limited)return '<div class="notice">当前档案仅覆盖已读的来源和页数。<a href="#search">查看各库状态并继续检索</a></div>';
  if(scope.kind!=="live"||!scope.limited)return "";
- return `<div class="notice" style="margin-top:12px"><p>已载入 ${scope.records.length} / ${scope.total} 条。所有角色与分区计数仅覆盖已载入论文。</p>${scope.nextCursor?`<button class="outline" data-act="next-page">载入下一页</button>`:`<button class="linkbtn" data-page="imports">设置 OpenAlex Key</button> 后重新检索，可继续翻页。`}</div>`;
+ return `<div class="notice" style="margin-top:12px"><p>已载入 ${scope.records.length} 条候选，来源报告命中 ${scope.sourceHits??scope.total} 条。所有角色与分区计数仅覆盖已载入论文。</p>${scope.nextCursor?`<button class="outline" data-act="next-page">载入下一页</button>`:`<button class="linkbtn" data-page="imports">设置 OpenAlex Key</button> 后重新检索，可继续翻页。`}</div>`;
 }
 function importsView(){
  return `<div class="page-head"><div><h1>数据导入</h1><p>导入个人书目或有权使用的分区表，补充当前工作区。</p></div></div><div class="twopanels">
@@ -221,6 +241,9 @@ function importsView(){
 }
 function method(){
  const items=[
+ ["多源检索","按库显示已读数量、失败和剩余页。公开 ORCID 标识、论文署名、单位和原文用于核查身份。选定 Scholar 档案后可补入导出书目，或通过配置的服务读取主页。"],
+ ["单位轨迹与评价","以该作者逐篇关联的单位和发表年份重建署名轨迹。独立性等指标展示代理变量、证据覆盖、观察窗与权重。报告可随证据更新。"],
+ ["机构年度认领","按发表年份核对医院的单位署名，将署名人与本地名册匹配并人工确认。结果和认领明细可导出。"],
  ["科研贡献指标","个人指标分别呈现承担通讯责任、研究构思及合作关系的可观察证据。每项标出分母与可用证据，历史记录缺失时显示待补。同领域和相同观察窗下的结果更易解释。"],
  ["期刊影响因子","JIF 为期刊的年度指标。论文清单统一采用选定的 JIF 指标年，每篇可查看期刊数据来源。重复发表在同一本期刊不会增加该期刊的 JIF。"],
  ["同名作者归属","档案层面的 ORCID 可能由多个同名作者的作品汇集而成。输入 ORCID 时优先核对署名行 raw_orcid；输入单位时核对该作者本人的逐篇地址。身份待核的行保存在单独的清单中，补充依据后可计入。"],
@@ -230,22 +253,39 @@ function method(){
  ["机构的第一单位","默认口径为首位作者的首个署名单位。元数据阶段仅接受单一作者地址、唯一机构映射。开放原文核验时再比对第一单位标注与作者关联。多单位或医院归属有歧义时留待人工确认。按机构标识精确匹配，附属医院需分别查询。"],
  ["分区版本与学科","中科院文献情报中心自 2026 年起停止更新期刊分区表。JCR 与历史中科院分区独立匹配，上传的 ISSN、年份和分类原样保留。多学科筛选表示满足所选条件的任一行，未指定版本时可匹配多个版本。"],
  ["主刊和系列期刊","本工具将 Cell、Nature、Science 定义为 CNS 主刊。系列期刊使用显式刊名与 ISSN 目录，出版集团名或刊名中的单词都不能单独决定类别。此分类仅用于筛选。"],
- ["医学备用检索","Europe PMC 检索 PubMed 收录的期刊论文与综述。每次读取最近 100 条，可缩小发表年份。同名时核对该作者本人的地址；缺少唯一 ORCID 的结果单列待核。"],
- ["查询和样本边界","OpenAlex 按作者或机构标识检索期刊论文和综述，依发表日期加载，每页最多 100 条。趋势图显示范围中最近六个自然年。精选示例和导入书目的文献类型按实际条目标注，可在论文清单筛选。"],
- ["保存与核查","外部检索将查询发往选定的数据源 OpenAlex 或 Europe PMC，开放全文查询会向 Europe PMC 发送文献标识。书目、分区表和人工备注仅在此浏览器保存，导出可保留副本。原文、数据库标记和人工核查在详情中分别说明。"]
+ ["医学文献","Europe PMC 提供生命科学和医学文献记录。可按年份缩小范围，并结合逐篇署名、ORCID 和作者本人的地址判断归属。"],
+ ["查询和样本边界","来源覆盖、年份、已读页数和身份核查均会影响计数。示例、文件导入与在线检索各自标记来源和范围。"],
+ ["保存与核查","多源检索会向列明的数据库发送学术查询。开放全文核查会向 Europe PMC 发送文献标识。书目、分区表和人工备注仅在此浏览器保存，导出可保留副本。原文、数据库标记和人工核查在详情中分别说明。"]
  ];
  return `<div class="page-head"><div><h1>统计口径</h1><p>读懂每个数字的来源、范围与署名证据。</p></div></div><div class="method-grid">${items.map(([h,t])=>`<section class="panel boxpad"><h2>${esc(h)}</h2><p>${esc(t)}</p></section>`).join("")}</div><section class="panel boxpad" style="margin-top:15px"><details><summary style="cursor:pointer;font-weight:600">查看期刊分类目录（${window.AtlasImport.journalCatalogue.length} 本）</summary>${["flagship","family","other"].map(t=>`<p><b>${familyNames[t]}</b>　${esc(window.AtlasImport.journalCatalogue.filter(j=>j.group===t).map(j=>j.title).join(" · "))}</p>`).join("")}</details><p class="source-links">${external("https://help.openalex.org/data/authorships/","OpenAlex 署名字段")}　${external("https://europepmc.org/RestfulWebService","Europe PMC")}　${external("https://nssc.ac.cn/library/dtxx/202604/t20260409_8183275.html","分区表停更公告")}　${external("https://developer.clarivate.com/apis/wos-journal","JCR 数据说明")}</p></section>`;
 }
 function render(){
- drawNav();const p=page();const screens={overview:()=>overview()+continuation(),search:hero,papers,metrics:metricsPage,imports:importsView,method};
- byId("main").innerHTML=screens[p]();
- if(p==="search")requestAnimationFrame(engrave);
+ if(typeof disposeView==="function")disposeView();
+ disposeView=null;
+ drawNav();
+ const p=page(),main=byId("main");
+ const screens={zhong:()=>{const z=zhongScope("author");return window.AtlasProfileV3.render(z.records,z)+'<div class="buttonset workspace-links"><button class="outline" data-act="case-author">在工作台打开这四篇论文</button><a href="./zhong.html">原文署名卡与期刊影响因子</a></div>';},overview:()=>overview()+continuation(),search:()=>window.AtlasSearchV3.render(),classic:hero,papers,metrics:metricsPage,
+  profile:()=>scope.mode==="author"?window.AtlasProfileV3.render(scope.records,scope):'<section class="panel boxpad"><h1>当前打开的是机构档案</h1><p>查看学者画像，请先选定一位学者。机构成果可按年度核对署名单位与认领人。</p><div class="buttonset"><a href="#search">查找学者</a><a href="#claims">进入机构年度认领</a></div></section>',claims:()=>window.AtlasClaimsV3.render(),ai:()=>window.AtlasAIV3.render(),imports:importsView,method};
+ main.innerHTML=screens[p]();
+ if(p==="zhong" || (p==="profile" && scope.mode==="author")){
+  const subject=p==="zhong"?zhongScope("author"):scope, archive=subject.archiveId;
+  main.insertAdjacentHTML("afterbegin",`<header class="page-head"><div><h1>${esc(subject.displayName||subject.name)}</h1><p>${esc(subject.kind==="case"?"Cardiff 目录核查样本":subject.affiliation||"学者画像")}${archive?" · 本地档案编号 "+esc(archive):""}${subject.archiveIdConflict?" · 档案标识存在冲突，需人工核查":""}</p></div></header>`);
+ }
+ if(p==="search"){
+  main.insertAdjacentHTML("beforeend", '<div class="entry-routes"><section><h2>钟志豪的学者画像</h2><p>查看 Cardiff 的逐篇署名，以及哈工大（深圳）会议记录提供的单位线索。</p><div><a href="#zhong">打开画像 ↗</a><a href="./zhong.html">逐篇核查卡</a></div></section><section><h2>机构年度认领</h2><p>按发表年份找出署名本院的论文，与人员名册匹配并导出认领结果。</p><div><a href="#claims">进入年度工作台 ↗</a></div></section></div>');
+  disposeView=window.AtlasSearchV3.mount(main,{scope,onOpen:v=>setScope(v,"profile")});
+ }
+ if(p==="claims")disposeView=window.AtlasClaimsV3.mount(main,{scope});
+ if(p==="ai")disposeView=window.AtlasAIV3.mount(main,{scope,records:scope.records});
+ if(p==="classic")requestAnimationFrame(engrave);
 }
 function openRecord(idx){
  const r=scope.records[idx];if(!r)return;currentRecord=idx;
- const rr=rankRows(r),rankInfo=rr.length?rr.map(x=>`${x.system==="JCR"?"JCR":"中科院历史版"} ${x.year} · ${x.category} · ${x.system==="JCR"?"Q"+x.quartile:x.quartile+"区"}`).join("；"):r.issn.length?"当前分区表无匹配":"待补 ISSN";
+ const rr=rankRows(r),rankInfo=rr.length?rr.map(x=>`${x.system==="JCR"?"JCR":"中科院历史版"} ${x.year} · ${x.category} · ${x.system==="JCR"?"Q"+x.quartile:x.quartile+"区"}`).join("；"):r.issn?.length?"当前分区表无匹配":"待补 ISSN";
  dia("论文证据",`<h3 style="margin:0 0 5px;line-height:1.5">${esc(r.title)}</h3><div class="muted">${esc(r.journal)} · ${esc(r.year||"年份待核")} · ${esc(typeName(r.workType))}</div><div class="tags" style="margin-top:10px">${tags(r)}${r.review?badge("已人工核查","warm"):""}${r.excluded?badge("已排除","dim"):""}</div>
  <div class="evidencebox"><strong>${esc(r.source||"书目")}</strong><br>${esc(r.evidence||"请核对原文")} ${r.evidenceUrl?external(r.evidenceUrl,"证据出处"):""} ${r.verificationUrl?external(r.verificationUrl,"开放全文"):""}</div>
+ ${r.provenance?.length?`<div class="evidencebox"><strong>收录来源</strong><ul>${r.provenance.map(p=>`<li>${external(p.url,p.source)||esc(p.source)} ${esc(p.id||"")}</li>`).join("")}</ul></div>`:""}
+ ${r.conflicts?.length?`<div class="notice"><strong>来源差异待核</strong><p>${esc(r.conflicts.join(" · "))}</p></div>`:""}
  ${r.review?`<div class="evidencebox"><strong>人工核查 · ${esc(r.review.date?.slice(0,10))}</strong><br>${esc(r.review.note)} ${external(r.review.url,"人工证据")}</div>`:""}
  ${r.identityEvidence?`<div class="evidencebox"><strong>身份依据</strong><br>${esc(r.identityEvidence)} ${external(r.identityEvidenceUrl,"身份出处")}</div>`:""}
  <p><b>期刊影响因子 JIF · ${esc(impactYear)}</b>　${impactCell(r)} ${external(impactInfo(r)?.jifSource,"JIF 数据来源")}</p>
@@ -277,9 +317,9 @@ function download(name,data,mime){
 }
 function exportRows(){
  const rows=page()==="papers"?filtered():scoped();
- const header=["档案","统计范围","当前论文数","来源命中数","来源","论文题名","期刊","发表年","文献类型","DOI","ISSN","角色标记","署名仍待核","首位作者第一单位","期刊类别","分区及版本学科","证据来源","证据说明","原文","核验证据链接","人工核查日期","人工核查说明","人工证据链接","是否排除","本行是否计入","身份依据","身份出处","JIF 指标年","期刊影响因子 JIF","JIF 来源"];
+ const header=["档案","统计范围","当前论文数","来源命中数","来源","论文题名","期刊","发表年","文献类型","DOI","ISSN","角色标记","署名仍待核","首位作者第一单位","期刊类别","分区及版本学科","证据来源","证据说明","原文","核验证据链接","人工核查日期","人工核查说明","人工证据链接","是否排除","本行是否计入","身份依据","身份出处","JIF 指标年","期刊影响因子 JIF","JIF 来源","收录数据库","逐库证据链接","来源差异"];
  const s=scope.mode==="institution";
- const data=rows.map(r=>[scope.name,scope.note,rows.length,scope.sourceHits??scope.total,scope.source,r.title,r.journal,r.year,typeName(r.workType),r.doi,(r.issn||[]).join(" | "),s?"":(r.roles||[]).map(k=>roleNames[k]).filter(Boolean).join(" | "),s?"":r.roleUnknown?"是":"否",s?unitText(r.firstUnit):"",familyNames[window.AtlasImport.classifyJournal(r)],rankRows(r).map(x=>`${x.system} ${x.year} ${x.category} ${x.system==="JCR"?"Q"+x.quartile:x.quartile+"区"}`).join(" | "),r.source,r.evidence,r.url,r.verificationUrl||r.evidenceUrl,r.review?.date,r.review?.note,r.review?.url,r.excluded?"是":"否",r.identityPending||r.excluded?"否":"是",r.identityEvidence,r.identityEvidenceUrl,impactYear,impactInfo(r)?.jif??"待补",impactInfo(r)?.jifSource]);
+ const data=rows.map(r=>[scope.name,scope.note,rows.length,scope.sourceHits??scope.total,scope.source,r.title,r.journal,r.year,typeName(r.workType),r.doi,(r.issn||[]).join(" | "),s?"":(r.roles||[]).map(k=>roleNames[k]).filter(Boolean).join(" | "),s?"":r.roleUnknown?"是":"否",s?unitText(r.firstUnit):"",familyNames[window.AtlasImport.classifyJournal(r)],rankRows(r).map(x=>`${x.system} ${x.year} ${x.category} ${x.system==="JCR"?"Q"+x.quartile:x.quartile+"区"}`).join(" | "),r.source,r.evidence,r.url,r.verificationUrl||r.evidenceUrl,r.review?.date,r.review?.note,r.review?.url,r.excluded?"是":"否",r.identityPending||r.excluded?"否":"是",r.identityEvidence,r.identityEvidenceUrl,impactYear,impactInfo(r)?.jif??"待补",impactInfo(r)?.jifSource,(r.sources||[]).join(" | "),(r.provenance||[]).map(p=>p.url).join(" | "),(r.conflicts||[]).join(" | ")]);
  const safeCell=v=>{let s=String(v??"");if(/^[\s]*[=+@\-\t\r]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"';};
  const text=[header,...data].map(line=>line.map(safeCell).join(",")).join("\r\n");
  download(`署名图谱_${scope.name.replace(/[<>:"/\\|?*\x00-\x1F]/g,"_")}.csv`,"\uFEFF"+text,"text/csv;charset=utf-8");toast(`已导出 ${rows.length} 篇论文`);
@@ -306,8 +346,8 @@ async function search(){
   const result=await provider.search(m,query,affiliation);if(seq!==requestSeq)return;
   candidates=cached?[cached,...result]:result;lastLiveYear="";notice="";
   if(!candidates.length){notice=m==="author"?"未找到匹配学者。可试论文上的英文署名、ORCID，或导入学术主页导出的书目。":"未找到匹配机构。可试英文全称或 OpenAlex 机构 ID。";}
-  else if(page()==="search"||page()==="overview")dia(m==="author"?"选择学者":"选择机构",resultBody());
- }catch(e){if(seq!==requestSeq)return;notice=e.message+" 可在“数据导入”中导入书目或设置 OpenAlex Key。";if(cached&&["overview","search"].includes(page())){candidates=[cached];lastLiveYear="";dia("本地核查样本",resultBody("在线数据源连接失败。以下为已逐篇核查的离线样本。"));}}
+  else if(page()==="classic"||page()==="overview")dia(m==="author"?"选择学者":"选择机构",resultBody());
+ }catch(e){if(seq!==requestSeq)return;notice=e.message+" 可在“数据导入”中导入书目或设置 OpenAlex Key。";if(cached&&["overview","classic"].includes(page())){candidates=[cached];lastLiveYear="";dia("本地核查样本",resultBody("在线数据源连接失败。以下为已逐篇核查的离线样本。"));}}
  finally{if(seq===requestSeq){busy=false;render();}}
 }
 async function chooseCandidate(i){
@@ -329,9 +369,9 @@ async function loadNext(button){
  if(loadingPage||!scope.nextCursor)return;
  loadingPage=true;button.disabled=true;button.textContent="载入中…";const dest=scope,prev=dest.nextCursor;
  try{
-  const v=await window.ScholarSource.load(dest.mode,dest.candidate,{year:dest.liveYear,cursor:prev});
+  const v=await (dest.candidate?.provider==="epmc"?window.PmcSource:window.ScholarSource).load(dest.mode,dest.candidate,{year:dest.liveYear,cursor:prev});
   if(scope!==dest)return;const ids=new Set(dest.records.map(r=>r.id));const added=v.records.filter(r=>!ids.has(r.id)&&ids.add(r.id));dest.records.push(...added);
-  dest.total=v.total;dest.nextCursor=(added.length&&v.nextCursor!==prev)?v.nextCursor:null;dest.limited=dest.records.length<dest.total;dest.note=liveNote(dest);remember();render();toast(`新增 ${added.length} 篇论文`);
+  dest.total=v.total;dest.sourceHits=v.sourceHits??v.total;dest.nextCursor=v.nextCursor!==prev?v.nextCursor:null;dest.limited=Boolean(dest.nextCursor)||Boolean(v.limited);dest.note=v.note||liveNote(dest);remember();render();toast(`新增 ${added.length} 篇论文`);
  }catch(e){toast(e.message);}
  finally{loadingPage=false;button.disabled=false;button.textContent="载入下一页";}
 }
@@ -411,7 +451,7 @@ document.addEventListener("click",e=>{
  if(act==="identity-list"){filters=defaultFilters();filters.status="identity";year="";nav("papers");}
  if(act==="cardiff"){query="";affiliation="";notice="";setScope(zhongScope(searchMode));}
  if(act==="case-author"||act==="case-org"){
-  const currentYear=year;
+  const currentYear=page()==="zhong"?"":year;
   setScope(zhongScope(act==="case-org"?"institution":"author"));
   year=currentYear;
   render();
@@ -450,6 +490,7 @@ byId("dialog").addEventListener("click",e=>{if(e.target!==byId("dialog"))return;
 byId("dialog").addEventListener("close",()=>{if(busy){requestSeq++;busy=false;if(page()==="overview")render();}});
 window.addEventListener("hashchange",()=>{requestSeq++;busy=false;notice="";render();window.scrollTo(0,0);});
 window.addEventListener("resize",engrave);
+let disposeView=null;
 render();
 
 })();

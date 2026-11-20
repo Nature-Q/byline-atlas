@@ -1,0 +1,14 @@
+.atlas-ai{max-width:960px}
+.atlas-ai h2{margin:0 0 .6rem}
+.atlas-ai form{display:grid;gap:.85rem;margin:1rem 0}
+.atlas-ai label{display:grid;gap:.35rem}
+.atlas-ai label.ai-consent{display:flex;align-items:flex-start;gap:.6rem}
+.atlas-ai label.ai-consent input{margin-top:.3rem}
+.atlas-ai .field{max-width:600px;width:100%}
+.atlas-ai p{margin:.55rem 0;line-height:1.65}
+.atlas-ai pre{max-height:19rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f2;color:#253b32;border-radius:8px;padding:1rem;font-size:.85rem}
+.atlas-ai summary{cursor:pointer}
+.atlas-ai [hidden]{display:none!important}
+.atlas-ai [data-ai-result] article{border-top:1px solid #bbcdbf;padding:.7rem 0}
+.atlas-ai [data-ai-result] ul{padding-left:1.5rem;overflow-wrap:anywhere}
+.atlas-ai footer{margin-top:1rem}

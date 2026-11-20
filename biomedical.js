@@ -34,6 +34,7 @@ function paperByline(p, mine) {
 const ownName=(a,n)=>{const g=norm(a.firstName),s=norm(a.lastName);return g&&s&&[g+" "+s,s+" "+g].includes(norm(n));};
 const aligned=(a,h)=>addresses(a).find(v=>(" "+norm(v)+" ").includes(" "+norm(h)+" "))||"";
 const orgs={"北京大学":"Peking University","北大":"Peking University","卡迪夫大学":"Cardiff University","cardiff":"Cardiff University","复旦大学":"Fudan University","清华大学":"Tsinghua University"};
+Object.assign(orgs, {"南方医院":"Nanfang Hospital", "南方医科大学南方医院":"Nanfang Hospital", "哈尔滨工业大学":"Harbin Institute of Technology"});
 function query(n,aff,id){
  if(id)return "AUTHORID:"+quote(id);
  const t=n.replace(/,/g," ").split(/\s+/).filter(Boolean);
@@ -43,12 +44,31 @@ function query(n,aff,id){
  return "("+[...new Set(names)].map(v=>"AUTH:"+quote(v)).join(" OR ")+")"+(aff?" AND AFF:"+quote(aff):"");
 }
 const cache=new Map();
-async function retrieve(q,year){
+async function retrieve(q,year,options={}){
  if(year&&!/^\d{4}$/.test(String(year)))throw Error("请输入四位发表年。");
- const k=q+' AND SRC:MED AND (PUB_TYPE:"journal article" OR PUB_TYPE:"review")'+(year?" AND PUB_YEAR:"+year:"")+" sort_date:y";
- const prev=cache.get(k);if(prev&&Date.now()-prev.at<180000)return prev.data;
- const u=new URL("https://www.ebi.ac.uk/europepmc/webservices/rest/search");for(const [key,val] of Object.entries({query:k,resultType:"core",format:"json",pageSize:100}))u.searchParams.set(key,val);
- const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),16000);try{const res=await fetch(u.href,{signal:ac.signal,credentials:"omit",referrerPolicy:"no-referrer"});if(!res.ok)throw Error("Europe PMC 返回 HTTP "+res.status+"。");const json=await res.json();if(!Number.isInteger(json.hitCount)||!Array.isArray(json.resultList?.result))throw Error("Europe PMC 数据格式不完整。");const data={items:json.resultList.result,hits:json.hitCount};if(cache.size>=4)cache.delete(cache.keys().next().value);cache.set(k,{at:Date.now(),data});return data;}catch(e){if(e.name==="AbortError"||e instanceof TypeError)throw Error("Europe PMC 连接失败或响应超时。");throw e;}finally{clearTimeout(timer);}
+ const typeFilter=options.allTypes ? "" : ' AND (PUB_TYPE:"journal article" OR PUB_TYPE:"review")';
+ const searchQuery=q+" AND SRC:MED"+typeFilter+(year?" AND PUB_YEAR:"+year:"")+" sort_date:y";
+ const cursor=clean(options.cursor)||"*";
+ const prior=Number.isSafeInteger(options.scanned)&&options.scanned>=0 ? options.scanned : cursor==="*"?0:null;
+ const cacheKey=JSON.stringify([searchQuery,cursor,prior]);
+ const prev=cache.get(cacheKey);
+ if(prev&&Date.now()-prev.at<180000)return prev.data;
+ const url=new URL("https://www.ebi.ac.uk/europepmc/webservices/rest/search");
+ for(const [key,val] of Object.entries({query:searchQuery,resultType:"core",format:"json",pageSize:100,cursorMark:cursor}))url.searchParams.set(key,val);
+ const ac=new AbortController(),timer=setTimeout(()=>ac.abort(),16000);
+ try{
+   const res=await fetch(url.href,{signal:ac.signal,credentials:"omit",referrerPolicy:"no-referrer"});
+   if(!res.ok)throw Error("Europe PMC 返回 HTTP "+res.status+"。");
+   const json=await res.json();
+   if(!Number.isSafeInteger(json.hitCount)||json.hitCount<0||!Array.isArray(json.resultList?.result))throw Error("Europe PMC 数据格式不完整。");
+   const items=json.resultList.result;
+   const more=prior===null ? items.length===100 : prior+items.length<json.hitCount;
+   const nextCursor=items.length>0 && more && typeof json.nextCursorMark==="string" && json.nextCursorMark!==cursor ? json.nextCursorMark||null : null;
+   const data={items,hits:json.hitCount,nextCursor,limited:Boolean(nextCursor)||(prior!==null&&more)};
+   if(cache.size>=8)cache.delete(cache.keys().next().value);
+   cache.set(cacheKey,{at:Date.now(),data});
+   return data;
+ }catch(e){if(e.name==="AbortError"||e instanceof TypeError)throw Error("Europe PMC 连接失败或响应超时。");throw e;}finally{clearTimeout(timer);}
 }
 const profile=(id,a)=>({provider:"epmc",id:"MED/ORCID/"+id,name:a?[a.firstName,a.lastName].filter(Boolean).join(" ")||id:id,orcid:id,requestedOrcid:id,affiliation:addresses(a)[0]||"署名单位待核",detail:"Europe PMC · ORCID "+id});
 async function search(mode,value,hint){
@@ -63,14 +83,57 @@ async function search(mode,value,hint){
 }
 async function load(mode,c,opts={}){
  if(mode!=="author"||c?.provider!=="epmc")throw Error("请重新选择 Europe PMC 候选。");
- const id=parseID(c.orcid),hint=c.clue||"";if(!id&&!hint)throw Error("缺少 ORCID 或单位。");
- const d=await retrieve(query(c.name,hint,id),opts.year),records=new Map();
- for(const p of d.items){const aa=authors(p),matched=aa.filter(a=>id?ids(a).length===1&&ids(a)[0]===id:ownName(a,c.name)&&aligned(a,hint)&&ids(a).length!==1);
- if(!id&&matched.length!==1)continue;const mine=matched.length===1?matched[0]:null;const wait=!id||!mine;const pmid=clean(p.pmid||p.id);if(!/^\d+$/.test(pmid))continue;
+ const id=parseID(c.requestedOrcid||c.orcid),clue=clean(c.clue||c.affiliationHint),hint=orgs[clue.toLowerCase()]||clue;
+ if(!id&&!hint&&!opts.allTypes)throw Error("缺少 ORCID 或单位。");
+ let searchQuery=query(c.name,opts.allTypes?"":hint,id);
+ let includeNames=false;
+ if(id && opts.includeNameMatches && clean(c.name)) {
+   try {
+     const nameQuery=query(clean(c.name),"","");
+     searchQuery="("+searchQuery+" OR "+nameQuery+")";
+     includeNames=true;
+   } catch { /* ORCID-only profiles can lack a complete searchable name. */ }
+ }
+ const d=await retrieve(searchQuery,opts.year,opts),records=new Map();
+ for(const p of d.items){
+   const aa=authors(p);
+   const exactIds=id?aa.filter(a=>ids(a).length===1&&ids(a)[0]===id):[];
+   let matched=exactIds;
+   if(!id || (includeNames && !exactIds.length)) {
+     matched=aa.filter(a=>ownName(a,c.name) && !(id&&ids(a).length) && (includeNames || opts.allTypes || aligned(a,hint)&&ids(a).length!==1));
+     if(!matched.length || (!opts.allTypes&&!includeNames&&matched.length!==1))continue;
+   }
+   const mine=matched.length===1?matched[0]:null;
+   const wait=!mine || exactIds.length!==1;
+   const pmid=clean(p.pmid||p.id);
+   if(!/^\d+$/.test(pmid))continue;
  const j=p.journalInfo?.journal||{},doi=clean(p.doi).toLowerCase().replace(/^https?:\/\/(?:dx\.)?doi\.org\//,"");const doiOK=/^10\.\d{4,9}\/[^\s"<>]+$/.test(doi)?doi:"";const link="https://pubmed.ncbi.nlm.nih.gov/"+pmid+"/",evidence=wait?(mine?"姓名与该作者本人的地址吻合，尚缺唯一 ORCID。":"文献检索命中，无法在作者表中唯一定位此 ORCID。"):"该作者署名行的 ORCID 与所选候选一致："+id+"。";const pos=mine?aa.indexOf(mine):-1;const types=arr(p.pubTypeList?.pubType).map(norm);const row={id:"MED/"+pmid,title:clean(p.title)||"题名待核",doi:doiOK,journal:clean(j.title||j.medlineAbbreviation||p.journalTitle)||"期刊待核",issn:[...new Set([j.ISSN,j.ESSN,j.issn,j.essn,p.journalIssn].filter(Boolean))],workType:types.some(t=>t.includes("review"))?"review":types.includes("letter")?"letter":"article",url:doiOK?"https://doi.org/"+doiOK:link,year:/^\d{4}$/.test(String(p.pubYear))?Number(p.pubYear):null,firstUnit:null,roles:pos===0?["first"]:[],roleUnknown:true,pmcid:/^PMC\d+$/.test(p.pmcid||"")?p.pmcid:"",workOrcid:mine&&id?id:"",rawAuthorName:mine?[mine.firstName,mine.lastName].filter(Boolean).join(" "):"",evidenceUrl:link,source:"Europe PMC · PubMed 书目",identityPending:wait,identityStatus:wait?"review":"supported",identityBasis:wait?"review":"work-orcid",identityEvidence:evidence,identityEvidenceUrl:link,evidence:(pos>=0?"署名顺位 "+(pos+1)+"。":"作者位置待核。")+"通讯、共一和共通请核对原文。"};
  Object.assign(row,paperByline(p,mine));
- const key=doiOK||row.id;if(!records.has(key)||records.get(key).identityPending&&!wait)records.set(key,row);}
- const rows=[...records.values()];return {records:rows,total:rows.length,sourceHits:d.hits,scanned:d.items.length,source:"Europe PMC · PubMed 期刊论文及综述",limited:false,nextCursor:null,note:"源查询命中 "+d.hits+" 条；按发表日期读取 "+d.items.length+" 条（上限 100）。逐篇匹配与去重后保留 "+rows.length+" 篇，其中身份待核 "+rows.filter(r=>r.identityPending).length+" 篇。"};
+ if(wait&&(opts.allTypes||includeNames) && (!id||includeNames)) {
+   row.identityEvidence=!mine?"多行署名与姓名相同，需人工定位。":
+     hint&&aligned(mine,hint)?"完整姓名与该署名行的单位线索相符，需核实人物身份。":"完整姓名相同，原始单位或 ORCID 待交叉核实。";
+   row.workOrcid=mine && ids(mine).length===1 ? ids(mine)[0] : "";
+ }
+ if(opts.allTypes&&!types.includes("journal article")&&!types.some(t=>t.includes("review"))){
+   const specific=["editorial","letter","comment","preprint","book","published erratum","conference paper"].find(type=>types.includes(type));
+   row.workType=specific||"unknown";
+ }
+ window.AtlasEvidenceV3?.europePmc(p,row);
+ const key=opts.allTypes?row.id:doiOK||row.id;if(!records.has(key)||records.get(key).identityPending&&!wait)records.set(key,row);}
+ const rows=[...records.values()];
+ return {records:rows,total:rows.length,sourceHits:d.hits,scanned:d.items.length,source:"Europe PMC · PubMed "+(opts.allTypes?"全部收录类型":"期刊论文及综述"),limited:d.limited,nextCursor:d.nextCursor,
+   note:"源查询命中 "+d.hits+" 条。本页读取 "+d.items.length+" 条，按署名筛选后保留 "+rows.length+" 篇，其中身份待核 "+rows.filter(r=>r.identityPending).length+" 篇。"};
 }
-window.PmcSource=Object.freeze({search,load});
+async function institutionPage(name,year,options={}) {
+ const input=clean(name), english=orgs[input.toLowerCase()]||input;
+ if(english.length<3 || english.length>180 || !/^\d{4}$/.test(String(year)))throw Error("请提供机构名称和四位发表年。");
+ const result=await retrieve("AFF:"+quote(english),year,options);
+ const items=result.items.map(paper=>{
+   const row=paperByline(paper,null);
+   window.AtlasEvidenceV3?.europePmc(paper,row);
+   return {paper,byline:row.byline};
+ });
+ return {...result,items,scanned:items.length};
+}
+window.PmcSource=Object.freeze({search,load,institutionPage});
 })();
