@@ -308,7 +308,10 @@ function render(){
  if(p==="chinese"&&scope.mode==="author")disposeView=window.AtlasCN.mount(main,{scope,onMerge:rows=>{openChineseRows(rows);return scope.records;}});
  if(p==="report")disposeView=window.AtlasReportV4.mount(main,scope);
  if(p==="claims")disposeView=window.AtlasClaimsV3.mount(main,{scope});
- if(p==="ai")disposeView=window.AtlasAIV3.mount(main,{scope,records:scope.records});
+ if(p==="ai"){
+  disposeView=window.AtlasAIV3.mount(main,{scope,records:scope.records});
+  if(!window.AtlasAIConfig?.platformAuth)main.insertAdjacentHTML("beforeend",'<section class="panel boxpad"><h2>使用云端账号</h2><p>账号版可登录后通过服务器调用 Qwen 或 DeepSeek。两个网址的浏览器工作区独立，切换前可导出书目。</p><a href="https://byline-atlas-cn-r8m4.funcord8.chatgpt.site/#ai" target="_blank" rel="noopener noreferrer">打开云端账号版</a></section>');
+ }
  if(p==="classic")requestAnimationFrame(engrave);
 }
 function openRecord(idx){

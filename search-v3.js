@@ -13,6 +13,8 @@
   let liveReading = false;
   let scholarUrl = "", relayUrl = window.AtlasScholarConfig?.relayUrl || "", importText = "", scholarBusy = false, submittedName="", aiPrompt="";
   const directory = name => "https://scholar.google.com/citations?hl=zh-CN&view_op=search_authors&mauthors="+encodeURIComponent(name);
+  const hosted = () => Boolean(window.AtlasAIConfig?.platformAuth) && window.AtlasAIConfig.scholarRelay!==false;
+  const cloudURL="https://byline-atlas-cn-r8m4.funcord8.chatgpt.site/#search";
   const scholarAPI = () => window.AtlasScholarLive;
   const scholarTypes = ".bib,.bibtex,.csv,.txt,.html,.htm";
   function scholarId(value){try{return scholarAPI().profileId(value);}catch{return "";}}
@@ -42,13 +44,14 @@
     <label>学者姓名<input name="scholarName" maxlength="200" placeholder="姓名可用于查找主页"></label>
     <div class="fs4-paths"><button class="solid" type="submit">打开 Scholar 档案</button><a data-fs-dir href="${directory("")}" target="_blank" rel="noopener noreferrer">在 Scholar 查找作者 ↗</a></div>
     <label class="fs4-files">导入 Scholar 网页或书目（可多选）<input name="file" type="file" multiple accept="${scholarTypes}"></label></form>
+    <p class="fs4-help">${hosted()?'<a href="/signin-with-chatgpt" target="_top">登录站点账户</a> 后打开 Scholar 档案，可使用自己的 SerpApi Key 在线读取。':link(cloudURL,"登录云端版并在线读取 Scholar 主页")}</p>
     <p class="fs4-help">在公开作者主页点击「显示更多」直至所需论文全部展开，再用浏览器保存 HTML，能保留表中显示的逐篇被引次数。自己的主页也可导出 BibTeX 或 CSV。${link("https://scholar.google.com/intl/en-US/scholar/citations.html","Google 导出帮助")}</p></section>
     <section class="fs3-panel"><h2>检索其他学术来源</h2><form class="fs3-form" data-fs-form="find">
       <label>姓名或学术标识符<input name="person" autocomplete="off" required maxlength="220" placeholder="例如 Zhihao Zhong 或 ORCID" value="${esc(query)}"></label>
       <label>单位线索（选填）<input name="org" autocomplete="off" maxlength="200" placeholder="现任或曾任单位" value="${esc(unit)}"></label>
       <label>发表年份（选填）<input name="year" type="number" min="1500" max="2099" placeholder="全部年份" value="${esc(year)}"></label>
       <button class="solid" type="submit">查找学者</button></form>
-      <div class="fs3-sources">OpenAlex · Europe PMC · Crossref · ORCID · DBLP</div></section>
+      <div class="fs3-sources">OpenAlex · Europe PMC · Crossref · ORCID · DBLP · Semantic Scholar</div></section>
       <details class="fs4-question"><summary>先记下想问 AI 的问题（选填）</summary><label>检索后想问什么<textarea name="aiPrompt" maxlength="1600" rows="2" placeholder="例如：哪几篇一作论文贡献了最多引用？">${esc(aiPrompt)}</textarea></label><p>问题暂存在当前页面，打开问答并确认发送后才会调用模型。</p></details><div data-fs-region="local"></div>
       <div data-fs-region="saved"></div><div data-fs-region="status" role="status" aria-live="polite"></div>
       <div data-fs-region="candidates"></div><div data-fs-region="result"></div></section>`;
@@ -57,7 +60,7 @@
   function tell(msg,bad=false){notice=msg;error=bad;}
   function candidateSection(){
     if (!candidates.length) return "";
-    const providers={openalex:"OpenAlex",epmc:"Europe PMC",orcid:"ORCID",dblp:"DBLP",bibliographic:"署名检索"};
+    const providers={openalex:"OpenAlex",epmc:"Europe PMC",orcid:"ORCID",dblp:"DBLP",s2:"Semantic Scholar",bibliographic:"署名检索"};
     const button=(c,i)=>`<button type="button" class="fs3-candidate" data-fs-candidate="${i}"><span><b>${esc(c.name)}</b><small>${esc(c.affiliation || "单位待核")}</small></span><span>${esc((c.matchSources||[c.provider]).map(s=>providers[s]||s).filter(Boolean).join(" · "))}<small>${esc([orcid(c),c.detail||c.id].filter(Boolean).join(" · "))}</small></span></button>`;
     return `<section class="fs3-panel"><h2>${attachMode?"选择同一人的另一份档案":"选择学者档案"}</h2><div class="fs3-candidates">${candidates.slice(0,8).map(button).join("")}</div>
       ${candidates.length>8?`<details><summary>其余 ${candidates.length-8} 位候选</summary><div class="fs3-candidates">${candidates.slice(8).map((c,i)=>button(c,i+8)).join("")}</div></details>`:""}
@@ -102,10 +105,12 @@
   function scholarView(){
     const live=draft.scholarLive;
     const person=draft.candidate?.scholarPlaceholder?"":draft.name;
-    const relay=window.AtlasScholarLive?`<details class="fs3-cover"><summary>在线读取公开主页</summary><form class="fs3-proof" data-fs-form="scholar"><label>Scholar 作者主页或 ID<input required name="scholar" value="${esc(scholarUrl)}"></label><label>Scholar 服务地址<input type="url" required name="relay" placeholder="http://127.0.0.1:8791/scholar" value="${esc(relayUrl)}"></label><label>本次最多读取页数<select name="pageLimit"><option value="1">1 页</option><option value="5">5 页</option><option value="20">20 页</option></select></label><p>每页最多 100 条。检测到末页会提前停止，实际请求的页数消耗服务配额。${link("https://github.com/Nature-Q/byline-atlas/tree/main/server/scholar-relay","配置服务")}</p><label><input type="checkbox" required> 已核对主页并同意本次在线读取</label><button type="submit" class="outline">${live && live.nextStart!=null?"读取下一批 Scholar 论文":"读取 Scholar 论文"}</button></form></details>`:"";
+    const host=hosted();
+    const access=host?'<label>个人 SerpApi Key<input type="password" name="scholarKey" required autocomplete="off" spellcheck="false" placeholder="仅本次使用"></label><p><a href="/signin-with-chatgpt" target="_top">登录站点账户</a>。本次密钥仅发往本站服务端，供其调用 SerpApi。</p>':'<label>Scholar 服务地址<input type="url" required name="relay" placeholder="http://127.0.0.1:8791/scholar" value="'+esc(relayUrl)+'"></label>';
+    const relay=window.AtlasScholarLive?`<details class="fs3-cover" ${host?"open":""}><summary>${host?"通过站点账户读取公开主页":"在线读取公开主页"}</summary><form class="fs3-proof" data-fs-form="scholar"><label>Scholar 作者主页或 ID<input required name="scholar" value="${esc(scholarUrl)}"></label>${access}<label>本次最多读取页数<select name="pageLimit"><option value="1">1 页</option><option value="5">5 页</option><option value="20">20 页</option></select></label><p>每页最多 100 条。检测到末页会提前停止，实际请求的页数消耗服务配额。${host?"":link("https://github.com/Nature-Q/byline-atlas/tree/main/server/scholar-relay","配置服务")}</p><label><input type="checkbox" required> 已核对主页并同意本次在线读取</label><button type="submit" class="outline">${live && live.nextStart!=null?"读取下一批 Scholar 论文":"读取 Scholar 论文"}</button></form></details>`:"";
     const linked=boundScholar(draft);
-    return `<details class="fs3-cover" data-fs-scholar open><summary>Google Scholar 论文与引用</summary><p>${linked?link(scholarAPI().canonicalProfile(linked),"打开已关联的 Scholar 主页"):link(directory(person),"在 Google Scholar 查找此人")} · 支持同时导入多份文件。合并匹配的记录后保留每个来源的引用数。</p>
-    <form data-fs-form="import" class="fs3-proof"><label>已保存的 Scholar 主页或书目<input name="file" multiple type="file" accept="${scholarTypes}"></label><label>或粘贴 BibTeX / CSV<textarea rows="3" name="bib" maxlength="12000000" placeholder="@article{…}">${esc(importText)}</textarea></label><button type="submit" class="outline">合并书目到此人</button></form>${relay}</details>`;
+    return `<details class="fs3-cover" data-fs-scholar open><summary>Google Scholar 论文与引用</summary><p>${linked?link(scholarAPI().canonicalProfile(linked),"打开已关联的 Scholar 主页"):link(directory(person),"在 Google Scholar 查找此人")} · 支持同时导入多份文件。合并匹配的记录后保留每个来源的引用数。</p>${host?relay:""}
+    <form data-fs-form="import" class="fs3-proof"><label>已保存的 Scholar 主页或书目<input name="file" multiple type="file" accept="${scholarTypes}"></label><label>或粘贴 BibTeX / CSV<textarea rows="3" name="bib" maxlength="12000000" placeholder="@article{…}">${esc(importText)}</textarea></label><button type="submit" class="outline">合并书目到此人</button></form>${host?"":relay}</details>`;
   }
   function enrichmentView(){
     if(!engine()?.enrichDOIs || !draft.records.some(r=>(r.sources||[]).some(x=>/Google Scholar|CNKI|知网/.test(x))))return "";
@@ -151,7 +156,7 @@
   function profileLinks(c){
     const oa=String(c?.id||"").match(/(?:^|\/)(A\d+)$/)?.[1], oid=orcid(c), links=[];
     if(oa)links.push(link("https://openalex.org/"+oa,"OpenAlex 作者档案"));
-    if(c?.provider==="dblp" && c.profileUrl)links.push(link(c.profileUrl,"DBLP 作者档案"));
+    if(["dblp","s2"].includes(c?.provider) && c.profileUrl)links.push(link(c.profileUrl,c.provider==="dblp"?"DBLP 作者档案":"Semantic Scholar 作者档案"));
     if(oid)links.push(link("https://orcid.org/"+oid,"ORCID "+oid));
     return links.length?`<p>${links.join(" · ")}</p>`:"";
   }
@@ -330,10 +335,12 @@
       finally{if(attempt===run){scholarBusy=false;draw();}}
     }
     async function readScholar(form){
-      const d=draft, profile=form.elements.scholar.value.trim(), relay=form.elements.relay.value.trim(), id=scholarAPI().profileId(profile);
+      const host=hosted(), d=draft, profile=form.elements.scholar.value.trim(), relay=form.elements.relay?.value.trim()||"", id=scholarAPI().profileId(profile);
+      let transientKey=host?(form.elements.scholarKey?.value.trim()||""):"";
+      if(host){form.elements.scholarKey.value="";if(!transientKey)return post("请填写个人 SerpApi Key。",true);}
       const expected=boundScholar(d);
       if(expected && expected!==id)return post("当前档案关联了另一个 Scholar 主页，请另开档案。",true);
-      if(!relay)return post("请填写 Scholar 服务地址，或从上方导入保存的主页。",true);
+      if(!host && !relay)return post("请填写 Scholar 服务地址，或从上方导入保存的主页。",true);
       const previous=d.scholarLive;
       if(previous && previous.nextStart==null)return post("已读到这个 Scholar 主页的最后一页。");
       const maxPages=Number(form.elements.pageLimit?.value)||1;
@@ -343,7 +350,7 @@
       try{
         let offset=previous?.nextStart??0, added=0, received=0;
         for(let pageNo=1;pageNo<=maxPages;pageNo++){
-        const result=await scholarAPI().fetchPage(profile,relay,offset);
+        const result=host?await scholarAPI().fetchHostedPage(profile,transientKey,offset):await scholarAPI().fetchPage(profile,relay,offset);
         if(attempt!==run||d!==draft||!active(root))return;
         if(d.candidate.scholarPlaceholder && result.name){d.name=result.name;d.candidate.name=result.name;d.candidate.scholarPlaceholder=false;}
         if(!d.affiliation&&result.affiliation)d.affiliation=result.affiliation;
@@ -357,7 +364,7 @@
         if(attempt!==run||d!==draft||!active(root))return;
         }
       }catch(e){if(attempt===run)tell("Scholar 请求失败。此前成功读取的页已保留。"+(e.message||"请检查服务地址，或导入保存的主页。"),true);}
-      finally{if(attempt===run){scholarBusy=false;liveReading=false;draw();}}
+      finally{transientKey="";if(attempt===run){scholarBusy=false;liveReading=false;draw();}}
     }
     async function enrich(retry){
       const d=draft, attempt=++run;

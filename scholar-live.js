@@ -63,11 +63,23 @@
     const loopback = ["127.0.0.1","localhost","[::1]"].includes(relay.hostname);
     if ((relay.protocol !== "https:" && !(loopback && relay.protocol === "http:")) || relay.username || relay.password || relay.search || relay.hash) throw new Error("服务需使用 HTTPS 地址，或本机 HTTP 地址。");
     const response = await fetch(relay.href, {method:"POST", headers:{"Content-Type":"application/json"}, credentials:"omit", referrerPolicy:"no-referrer", signal:AbortSignal.timeout(32000), body:JSON.stringify({authorId,start})});
+    return unpack(response,authorId,start);
+  }
+  async function fetchHostedPage(profile, key, start=0) {
+    if(!window.AtlasAIConfig?.platformAuth || window.AtlasAIConfig.scholarRelay===false)throw Error("本站未启用账户读取服务。");
+    const authorId=profileId(profile);
+    const headers={"Content-Type":"application/json"};
+    if(key)headers["X-Atlas-Scholar-Key"]=key;
+    const response=await fetch(new URL("/api/scholar",location.origin),{method:"POST",headers,credentials:"same-origin",redirect:"error",referrerPolicy:"no-referrer",signal:AbortSignal.timeout(32000),body:JSON.stringify({authorId,start})});
+    if(response.status===401)throw Error("请先登录站点账户，再重新提交本次读取。");
+    return unpack(response,authorId,start);
+  }
+  async function unpack(response,authorId,start) {
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !Array.isArray(result.articles)) throw new Error(result.error || "Google Scholar 服务未返回有效结果。");
     const sourceUrl=canonicalProfile(authorId);
     const records=workRows(result.articles,authorId,new Date().toISOString().slice(0,10));
     return {records,name:String(result.author?.name || ""),affiliation:String(result.author?.affiliations || ""),nextStart:Number.isSafeInteger(result.nextStart) && result.nextStart > start ? result.nextStart : null,sourceUrl,total:null};
   }
-  window.AtlasScholarLive = {fetchPage,profileId,canonicalProfile,parseProfileHtml};
+  window.AtlasScholarLive = {fetchPage,fetchHostedPage,profileId,canonicalProfile,parseProfileHtml};
 })();

@@ -39,6 +39,48 @@ function providerError(code){
   if(code===402||code===429)return status(code,{error:'provider_quota'});
   return status(502,{error:'provider'});
 }
+async function scholar(req){
+  if(req.method!=='POST')return status(405,{error:'请使用 POST 请求。'},{Allow:'POST'});
+  if(req.headers.get('Origin')!==new URL(req.url).origin || req.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase()!=='application/json')
+    return status(403,{error:'仅接受本站页面的 JSON 请求。'});
+  const user=req.headers.get('oai-authenticated-user-id');
+  if(!user || user.length>256)return status(401,{error:'请先登录托管工作台。'});
+  const key=req.headers.get('X-Atlas-Scholar-Key');
+  if(!key)return status(503,{error:'请填写本次使用的个人 SerpApi 密钥。'});
+  if(!/^[a-zA-Z0-9._~-]{8,256}$/.test(key))return status(400,{error:'SerpApi 密钥格式无效。'});
+  let input;
+  try{input=JSON.parse(await boundedText(req.body,2048));}
+  catch(e){return status(e.message==='length'?413:400,{error:'请求内容无效。'});}
+  const id=input?.authorId, start=input?.start;
+  if(typeof id!=='string'||!/^[a-zA-Z0-9_-]{12}$/.test(id)||!Number.isInteger(start)||start<0||start>100000)
+    return status(400,{error:'作者主页 ID 或页码无效。'});
+  const target=new URL('https://serpapi.com/search.json');
+  target.search=new URLSearchParams({engine:'google_scholar_author',author_id:id,hl:'en',num:'100',start:String(start),api_key:key}).toString();
+  const ctrl=new AbortController(), timer=setTimeout(()=>ctrl.abort(),25000);
+  try{
+    const upstream=await fetch(target,{headers:{Accept:'application/json'},redirect:'error',signal:ctrl.signal});
+    if(upstream.status===401||upstream.status===403)return status(403,{error:'SerpApi 拒绝了所提供的密钥。'});
+    if(upstream.status===402||upstream.status===429)return status(upstream.status,{error:'SerpApi 账户额度不足或达到频率限制。'});
+    if(!upstream.ok)return status(502,{error:'SerpApi 暂未返回作者主页。'});
+    const raw=JSON.parse(await boundedText(upstream.body,2_000_000));
+    if(raw.error||!Array.isArray(raw.articles))return status(502,{error:'SerpApi 未提供可读的主页论文记录。'});
+    const field=(v,max)=>typeof v==='string'?v.trim().slice(0,max):'';
+    const articles=raw.articles.slice(0,100).filter(a=>a&&typeof a.title==='string'&&a.title.trim()).map(a=>({
+      citation_id:field(a.citation_id,200),title:field(a.title,1600),authors:field(a.authors,4000),publication:field(a.publication,1400),
+      year:/^\d{4}$/.test(String(a.year||''))?Number(a.year):null,
+      ...(Number.isSafeInteger(a.cited_by?.value)&&a.cited_by.value>=0?{citedBy:a.cited_by.value}:{})
+    }));
+    let nextStart=null;
+    if(articles.length&&typeof raw.serpapi_pagination?.next==='string'){
+      try{
+        const next=new URL(raw.serpapi_pagination.next), offset=Number(next.searchParams.get('start')||next.searchParams.get('cstart'));
+        if(Number.isInteger(offset)&&offset>start&&offset<=100000)nextStart=offset;
+      }catch{}
+    }
+    return status(200,{author:{name:field(raw.author?.name,200),affiliations:field(raw.author?.affiliations,1000)},articles,nextStart});
+  }catch{return status(502,{error:'主页服务暂时无法连接或返回内容不完整，请稍后再试。'});}
+  finally{clearTimeout(timer);}
+}
 async function chat(req,env,ui,path){
   const origin=new URL(req.url).origin;
   if(req.method!=='POST')return status(405,{error:'method'},{Allow:'POST'});
@@ -82,6 +124,7 @@ async function chat(req,env,ui,path){
 export function createWorker(assets,ui){
   return {async fetch(req,env={}){
     const pathname=new URL(req.url).pathname.replace(/^\/byline-atlas(?=\/|$)/,'')||'/';
+    if(pathname==='/api/scholar')return scholar(req);
     if(pathname.startsWith('/api/ai/'))return chat(req,env,ui,pathname);
     if(!['GET','HEAD'].includes(req.method))return status(405,{error:'method'},{Allow:'GET, HEAD'});
     const asset=Object.hasOwn(assets,pathname==='/'?'index.html':pathname.slice(1))?assets[pathname==='/'?'index.html':pathname.slice(1)]:null;
@@ -89,7 +132,7 @@ export function createWorker(assets,ui){
     let body=asset.body;
     if(asset.binary)body=Uint8Array.from(atob(body),c=>c.charCodeAt(0));
     if(asset.type.startsWith('text/html')){
-      const config={authenticatedRelay:true,platformAuth:true,signInPath:'/signin-with-chatgpt',signOutPath:'/signout-with-chatgpt',
+      const config={authenticatedRelay:true,platformAuth:true,scholarRelay:true,signInPath:'/signin-with-chatgpt',signOutPath:'/signout-with-chatgpt',
         relayProviders:providers,operatorProviders:env.DB?providers.filter(p=>Boolean(credentials(env,p))):[],allowRelayKey:true};
       body=body.replace('</head>','<script>window.AtlasAIConfig='+JSON.stringify(config)+'</script></head>');
     }

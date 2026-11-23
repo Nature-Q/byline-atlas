@@ -4,7 +4,11 @@
 
 ## 使用
 
-1. 从 Google Scholar 主页、主页 ID、已保存的主页 HTML 或导出的书目开始。HTML 可保留网页上实际显示的逐篇引用数。在保存之前用“显示更多”展开要导入的记录。使用自己的 SerpApi 服务时也可在线分页读取公开主页。[配置 Scholar 服务](server/scholar-relay/README.md)
+[打开云端账号版](https://byline-atlas-cn-r8m4.funcord8.chatgpt.site/#ai)，选择服务端通义千问或 DeepSeek 后可以登录并使用个人 API Key。公开站的免费 Qwen 在设备上运行。两个入口各自在浏览器保存工作区。
+
+![钟志豪的一作与通讯引文统计](docs/zhong-role-citations.jpg)
+
+1. 从 Google Scholar 主页、主页 ID、已保存的主页 HTML 或导出的书目开始。HTML 可保留网页上实际显示的逐篇引用数。在保存之前用“显示更多”展开要导入的记录。登录云端账号版后可使用个人 SerpApi Key 分页读取公开主页，也可使用自建代理。[配置 Scholar 服务](server/scholar-relay/README.md)
 2. 用姓名、ORCID、曾用单位或来源作者标识补查 OpenAlex、Crossref、Europe PMC、DBLP 及 Semantic Scholar。读取范围、身份冲突、未读取的分页按库显示。核实同一人的多个作者档案后可合并。
 3. 核对待确认记录后打开画像。单位轨迹按论文关联到本人的署名地址和发表年呈现。指标注明计算规则、证据和缺失项。手动权重仅作用于个人工作区。论文列表支持影响因子、JCR 和历史中科院分区筛选。年度影响因子 CSV 的列为 issn,year,jif,source，year 为指标年。
 4. 在机构年度认领中选择机构、年份，导入有权使用的人员名册，在待核队列内核对实际署名、确认或撤回认领并导出年度 CSV。人员名册和认领记录保存在本浏览器。

@@ -27,3 +27,7 @@ node server/cloud-v4/build.mjs --checkout /path/to/site --assets /path/to/public
 使用运营方账户时，每次模型调用前按 UTC 日期预留一次请求配额。并发请求通过同一个数据库写入竞争配额，上游错误仍占用该次请求。每日表仅保存日期、站内用户 ID 的哈希和请求次数。配额表不可用时停用运营方代付。使用个人密钥仍可问答。每轮回复最多请求 850 个输出 token。用户问题、历史轮数、书目数量和请求体另有上限。
 
 平台入口 `/signin-with-chatgpt` 和 `/signout-with-chatgpt` 由 Sites 负责。用量表记录请求次数，尚未对接订单或代扣。界面展示的 token 来自上游实际响应。
+
+## Google Scholar 云端读取
+
+在托管版登录后，可用个人 SerpApi 密钥按页读取指定的 Google Scholar 作者主页。每次确认最多请求 100 条。站点通过同源接口 `POST /api/scholar` 接收 `{authorId,start}`，本次个人密钥放在 `X-Atlas-Scholar-Key` 请求头。服务只向 SerpApi 官方作者接口转发，返回作者名称、公开单位、论文元数据与下一页偏移量。上游按个人账户额度计费。本服务不保存密钥和原始响应。
