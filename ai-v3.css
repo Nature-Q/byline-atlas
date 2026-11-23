@@ -1,14 +1,19 @@
 .atlas-ai{max-width:960px}
-.atlas-ai h2{margin:0 0 .6rem}
-.atlas-ai form{display:grid;gap:.85rem;margin:1rem 0}
-.atlas-ai label{display:grid;gap:.35rem}
+.atlas-ai h2{margin:0 0 .7rem}
+.atlas-ai form,.atlas-ai label{display:grid;gap:.4rem}
+.atlas-ai form{gap:.9rem;margin:1rem 0}
+.atlas-ai .ai-settings{display:flex;gap:.8rem;flex-wrap:wrap}
 .atlas-ai label.ai-consent{display:flex;align-items:flex-start;gap:.6rem}
-.atlas-ai label.ai-consent input{margin-top:.3rem}
-.atlas-ai .field{max-width:600px;width:100%}
+.atlas-ai label.ai-consent input{margin-top:.35rem}
+.atlas-ai .field{max-width:650px;width:100%;box-sizing:border-box;min-width:0}
+.atlas-ai textarea.field{resize:vertical;max-width:100%;line-height:1.6;padding:.65rem;font:inherit}
 .atlas-ai p{margin:.55rem 0;line-height:1.65}
+.atlas-ai .ai-hint,.atlas-ai [data-ai-count]{color:#535f57;font-size:.9rem}
 .atlas-ai pre{max-height:19rem;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f4f6f2;color:#253b32;border-radius:8px;padding:1rem;font-size:.85rem}
 .atlas-ai summary{cursor:pointer}
 .atlas-ai [hidden]{display:none!important}
-.atlas-ai [data-ai-result] article{border-top:1px solid #bbcdbf;padding:.7rem 0}
+.atlas-ai [data-ai-result] article{padding:.75rem 1rem;border-radius:8px;margin:.65rem 0;background:#f1f5ef}
+.atlas-ai [data-ai-result] article:nth-child(even){background:#f9f8f3}
+.atlas-ai [data-ai-result] p{white-space:pre-wrap;overflow-wrap:anywhere}
 .atlas-ai [data-ai-result] ul{padding-left:1.5rem;overflow-wrap:anywhere}
-.atlas-ai footer{margin-top:1rem}
+.atlas-ai footer{margin-top:1rem;font-size:.9rem}

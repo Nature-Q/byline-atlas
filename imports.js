@@ -215,14 +215,42 @@
     return /^10\.\d{4,9}\/[^\s<>"]+$/i.test(doi) ? doi.toLowerCase() : "";
   }
 
+  // A comma in "Family, Given" belongs to one author. Comma-only lists of
+  // bare Latin words are ambiguous, so retain the raw string in that case.
+  function authorByline(raw, {format="csv"}={}) {
+    const text=tidy(raw);
+    if(!text)return [];
+    const truncated=/(?:\bet\s+al\.?|\band others\b|(?:[,、;\s]|^)等(?:人)?$|…|\.{3})/iu;
+    const cut=text.search(truncated);
+    const head=(cut>=0?text.slice(0,cut):text).replace(/[\s,、;]+$/u,"");
+    if(!head)return [];
+    const units=head.split(/\s+and\s+|[;；、|]/iu).map(s=>s.trim()).filter(Boolean);
+    function display(value, ordered) {
+      const chunks=value.split(/\s*,\s*/u).filter(Boolean);
+      if(chunks.length<2)return chunks;
+      if(chunks.every(v=>/^[\p{Script=Han}\s·]{2,12}$/u.test(v))) return chunks;
+      if(ordered && chunks.length===2)return [chunks[1]+" "+chunks[0]];
+      if(ordered && chunks.length===3 && /^(jr|sr|ii|iii|iv)\.?$/i.test(chunks[1])) return [chunks[2]+" "+chunks[0]+" "+chunks[1]];
+      if(chunks.every(v=>/\p{L}[-\p{L}.']*\s+\p{L}/u.test(v)))return chunks;
+      if(chunks.length===2 && chunks.every(v=>/^[\p{L}.'’-]+$/u.test(v))) return [chunks[1]+" "+chunks[0]];
+      return [];
+    }
+    const ordered=format==="bib"||units.length>1;
+    const groups=units.map(unit=>display(unit,ordered));
+    if(groups.some(group=>!group.length))return [];
+    const names=groups.flat().map(humanText).filter(Boolean);
+    return names.map((name,i)=>({name,position:i===0?"first":cut<0&&i===names.length-1?"last":"middle",isTarget:false,affiliations:[],institutions:[]}));
+  }
+
   function bibliographyCSV(text) {
     const {names, rows} = csvTable(text);
     const fields = Object.fromEntries(Object.entries({
       title: ["title", "题名", "标题", "篇名", "论文题目"],
-      journal: ["publication", "journal", "source title", "期刊", "出版物", "刊名"],
+      journal: ["publication", "journal", "source", "source title", "期刊", "出版物", "刊名"],
       year: ["year", "年份", "年", "发表年份"], doi: ["doi"], issn: ["issn", "刊号"],
-      url: ["url", "link", "链接"], author: ["authors", "author", "作者"],
-      cites: ["cited by", "cites", "citedby", "被引次数", "引用次数"]
+      url: ["url", "article URL", "link", "链接"], author: ["authors", "author", "作者"],
+      cites: ["cited by", "citations", "cites", "citedby", "times cited", "被引次数", "引用次数", "引证数", "被引频次"],
+      citesUrl: ["citesURL", "citation URL", "被引链接"]
     }).map(([key, aliases]) => [key, chooseColumn(names, aliases, key === "title")]));
     return rows.map(row => Object.fromEntries(Object.entries(fields).map(([key, col]) => [key, row[col] || ""])));
   }
@@ -258,6 +286,8 @@
       usedIDs.add(id);
       result.push({
         id, title, journal, year, doi, url, issn, importAuthorText: humanText(entry.author),
+        byline:authorByline(entry.author,{format:bib?"bib":"csv"}),
+        importCitationUrl:safeUrl(entry.citesUrl)||safeUrl(entry.url),
         ...(Number.isSafeInteger(citations) ? {citedByCount:citations} : {}),
         workType: entry.type || "unknown", roles: [], roleUnknown: true, firstUnit: null,
         source: bib ? "书目导入 · BibTeX" : "书目导入 · CSV",
@@ -317,6 +347,6 @@
     return [...matches][0].group;
   }
 
-  window.AtlasImport = {parseRankCSV, template, parseBibliography, classifyJournal, normalizeIssn,
+  window.AtlasImport = {parseRankCSV, template, parseBibliography, classifyJournal, normalizeIssn, authorByline,
     journalCatalogue: catalogue.map(([group, title]) => ({group, title}))};
 })();

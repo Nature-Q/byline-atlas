@@ -26,7 +26,8 @@ async function lookup(authorId, start) {
       const offset = Number(params.get("start") || params.get("cstart"));
       if (Number.isInteger(offset) && offset > start && offset <= 100000) nextStart = offset;
     }
-    const data = {articles,nextStart};
+    const author={name:String(raw.author?.name || ""),affiliations:String(raw.author?.affiliations || "")};
+    const data = {author,articles,nextStart};
     if (cache.size >= 150) cache.delete(cache.keys().next().value);
     cache.set(key,{until:Date.now()+3600000,data});
     return data;

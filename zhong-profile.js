@@ -21,6 +21,19 @@
       return matches;
     });
     const records = visible.map(row => papers.get(row.querySelector('a[href^="https://doi.org/"]').href));
+    const statsNode=root.querySelector("[data-role-cites]");
+    statsNode.hidden=mode!=="author";
+    if(mode==="author"){
+      const source=statsNode.querySelector("select").value;
+      const rows=records.filter(Boolean);
+      const totalFor=role=>{
+        const group=rows.filter(r=>(r.roles||[]).some(k=>role.includes(k)));
+        const counts=group.map(r=>r.citationEvidence?.find(c=>c.source===source)?.count).filter(Number.isSafeInteger);
+        return (group.length&&!counts.length?"待补":counts.reduce((n,c)=>n+c,0)+" 次")+"（覆盖 "+counts.length+"/"+group.length+" 篇）";
+      };
+      statsNode.querySelector("[data-first-cites]").textContent=totalFor(["first","cofirst"]);
+      statsNode.querySelector("[data-corr-cites]").textContent=totalFor(["corresponding","cocorresponding"]);
+    }
     const count = predicate => visible.filter(row => predicate(row.dataset)).length;
     const metrics = mode === "author" ? [
       ["期刊论文", visible.length],
@@ -44,6 +57,7 @@
     modeButtons.forEach(button => button.setAttribute("aria-pressed", String(button.dataset.mode === mode)));
   }
 
+  root.querySelector("[data-role-cites] select").addEventListener("change",render);
   modeButtons.forEach(button => button.addEventListener("click", () => {
     mode = button.dataset.mode;
     render();
