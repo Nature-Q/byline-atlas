@@ -73,7 +73,7 @@
       identitySource: "https://people.eecs.berkeley.edu/~malik/malik-cv-full.pdf"
     }],
     [warping, {
-      name: "Kun Zhou", category: "国家杰出青年科学基金", year: 2008,
+      name: "Kun Zhou", category: "国家杰出青年科学基金获得者", year: 2008,
       source: "https://mip.ecnu.edu.cn/a5/7d/c2120a435581/page.htm",
       identitySource: "https://person.zju.edu.cn/kunzhou"
     }]
