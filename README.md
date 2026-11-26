@@ -2,6 +2,14 @@
 
 进入[公开工作台](https://nature-q.github.io/byline-atlas/)。可直接查看[钟志豪的论文署名卡](https://nature-q.github.io/byline-atlas/zhong.html)及[学者画像](https://nature-q.github.io/byline-atlas/#zhong)。
 
+## 科研能力分析与检索覆盖
+
+[查看钟志豪的贡献、期刊层次和合作证据](https://byline-atlas-cn-r8m4.funcord8.chatgpt.site/#zhong) · [查看何恺明的计算机视觉会议书目](https://byline-atlas-cn-r8m4.funcord8.chatgpt.site/#he)
+
+学者档案支持查看独立承担研究工作的公开证据、一区与二区 Top 的发表记录，以及合作网络。共同署名、荣誉认定和荣誉年份分别核对。中科院大类和 JCR 学科分区分别统计，可导入机构有权使用的目录。计算机会议保留其会议类型。
+
+多源检索可从 DataCite 补查论文及预印本，也可从已确认论文的 DOI 关联 Semantic Scholar 作者档案。每个来源显示读取状态和仍可继续翻页的范围。
+
 ## 使用
 
 [打开云端账号版](https://byline-atlas-cn-r8m4.funcord8.chatgpt.site/#ai)，选择服务端通义千问或 DeepSeek 后可以登录并使用个人 API Key。公开站的免费 Qwen 在设备上运行。两个入口各自在浏览器保存工作区。

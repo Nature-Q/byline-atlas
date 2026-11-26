@@ -92,6 +92,7 @@
     const newerManual=preference(b)===100&&preference(a)===100&&clean(b.review?.date)>clean(a.review?.date);
     const [main,extra] = preference(b)>preference(a)||newerManual ? [b,a] : [a,b];
     const mixed = {...extra,...main,id:a.id||b.id,doi:a.doi||b.doi,pmid:a.pmid||b.pmid,pmcid:a.pmcid||b.pmcid||""};
+    mixed.identityBlock=a.identityBlock||b.identityBlock||"";
     mixed.sources=distinct([...a.sources,...b.sources]);
     mixed.provenance=objects([...a.provenance,...b.provenance],p=>[p.source,p.id,p.url].join("|"));
     mixed.conflicts=distinct([...a.conflicts,...b.conflicts]);
@@ -101,6 +102,7 @@
     if (a.year&&b.year&&a.year!==b.year) mixed.conflicts.push("发表年份不一致："+a.year+" / "+b.year);
     if (a.title&&b.title&&norm(a.title)!==norm(b.title)) mixed.conflicts.push("来源题名有差异，请对照原始记录。");
     mixed.conflicts=distinct(mixed.conflicts);
+    if (mixed.identityBlock && !manual) Object.assign(mixed,{identityPending:true,identityStatus:"review",identityBasis:"review",identityEvidence:mixed.identityBlock});
     const targetMismatch=Boolean(orcid(a.workOrcid)&&orcid(b.workOrcid)&&orcid(a.workOrcid)!==orcid(b.workOrcid));
     if (targetMismatch || mixed.conflicts.includes("来源指向不同的作者 ORCID。")) {
       mixed.conflicts=distinct([...mixed.conflicts,"来源指向不同的作者 ORCID。"]);
@@ -231,6 +233,7 @@
     return {id:"CR/"+d,doi:d,title:clean(w.title[0]),journal:clean(w["container-title"]?.[0])||"来源待核",year,
       issn:distinct(list(w.ISSN)),workType:types[w.type]||w.type||"unknown",url,evidenceUrl:"https://api.crossref.org/works/"+encodeURIComponent(d),
       byline:authorEntries,authorAffiliations:own?.institutions||[],workOrcid:own?.orcid||"",rawAuthorName:own?.name||"",keywords:list(w.subject),
+      identityBlock:contradictory?"同名署名的原始 ORCID 与目标作者冲突。":"",
       keywordEvidence:list(w.subject).filter(s=>typeof s==="string"&&s.trim()).map(term=>({term,source:"Crossref",kind:"期刊主题"})),
       roles:pos===0&&(!mine.sequence||mine.sequence==="first")?["first"]:[],roleUnknown:true,firstUnit:null,
       citedByCount:Number.isFinite(w["is-referenced-by-count"])?w["is-referenced-by-count"]:null,source:"Crossref",
@@ -484,5 +487,62 @@
     return {records,total:records.length,sourceHits:hits,coverage,limited:hasMore||coverage.some(s=>s.status==="error"||s.status==="partial"),
       source:"多来源学术检索",note,nextCursor:hasMore?{signature:sig,pages,coverage}:null};
   }
-  window.AtlasFederation=Object.freeze({search,load,merge,importScholar,matchScholarByline,enrichDOIs});
+  function resolveIdentity(records,candidate={}) {
+    const target=candidateOrcid(candidate);
+    const names=new Set([candidate.name,...list(candidate.aliases)].filter(completeName).map(nameKey));
+    if(!target && !names.size)return records;
+    const anchors=[], counts=new Map(), knownIds=new Set();
+    const blocked=r=>r.excluded || r.identityBlock || r.conflicts?.length;
+    const trusted=r=>r.identityBasis==="work-orcid" || r.identityBasis==="work-affiliation" || r.identityReview && !r.identityPending;
+    const focused=row=>list(row.byline).length<=30 && !list(row.byline).some(p=>/\b(consortium|committee|collaboration|investigators|working group|study group)\b|协作组|协作网|研究组/i.test(p.name));
+    function uniqueTarget(row) {
+      const people=list(row.byline), hits=people.filter(p=>names.has(nameKey(p.name)) || target && orcid(p.orcid)===target);
+      if(hits.length!==1 || people.filter(p=>p.isTarget).some(p=>p!==hits[0]))return null;
+      const person=hits[0], actual=orcid(person.orcid), raw=orcid(row.workOrcid);
+      if(target && (actual && target!==actual || raw && target!==raw))return null;
+      if(actual && raw && actual!==raw)return null;
+      return person;
+    }
+    function collaborators(row,mine) {
+      const people=list(row.byline), keys=people.map(p=>nameKey(p.name));
+      return new Set(people.filter((p,i)=>p!==mine && completeName(p.name) && keys.indexOf(keys[i])===keys.lastIndexOf(keys[i]) &&
+        !/\b(consortium|committee|collaboration|investigators|working group|study group)\b/i.test(p.name)).map(p=>nameKey(p.name)));
+    }
+    const seen=new Set();
+    for(const r of records){
+      const key=doi(r.doi);
+      if(!key || seen.has(key) || blocked(r) || r.identityPending || !trusted(r) || r.workType==="dataset")continue;
+      const mine=uniqueTarget(r);if(!mine)continue;
+      const observed=orcid(mine.orcid)||orcid(r.workOrcid);if(observed)knownIds.add(observed);
+      if(!focused(r))continue;
+      const co=collaborators(r,mine);
+      if(!co.size)continue;
+      seen.add(key);anchors.push({doi:key,co,url:validUrl(r.identityEvidenceUrl||r.evidenceUrl||r.url)||"https://doi.org/"+key});
+      for(const k of co)counts.set(k,(counts.get(k)||0)+1);
+    }
+    return records.map(r=>{
+      if(!r.identityPending || r.identityReview || r.review || blocked(r))return r;
+      const mine=uniqueTarget(r);if(!mine)return r;
+      let reason="",supports=[];
+      const actual=orcid(mine.orcid)||orcid(r.workOrcid);
+      if(!target && actual && (knownIds.size>1 || knownIds.size===1 && !knownIds.has(actual)))return r;
+      if(target && orcid(mine.orcid)===target && list(r.byline).filter(p=>orcid(p.orcid)===target).length===1){
+        reason="该篇唯一署名行的 ORCID 与选定作者完全一致。";
+      }else{
+        if(!focused(r) || !names.has(nameKey(mine.name)))return r;
+        const same=[...collaborators(r,mine)].filter(k=>counts.get(k)>=2);
+        if(same.length<2)return r;
+        const witnesses=anchors.filter(a=>same.filter(k=>a.co.has(k)).length>=2 && a.doi!==doi(r.doi));
+        if(witnesses.length<2)return r;
+        supports=witnesses.slice(0,2).map(a=>({doi:a.doi,url:a.url}));
+        reason="本篇完整署名唯一匹配，且与两篇已核实成果分别共有至少两位重复合作者。";
+      }
+      const byline=r.byline.map(p=>({...p,isTarget:p===mine}));
+      const first=byline[0]?.isTarget && (!mine.position || mine.position==="first");
+      return {...r,byline,rawAuthorName:mine.name,roles:first?distinct([...list(r.roles),"first"]):r.roles,
+        identityPending:false,identityStatus:"supported",identityBasis:supports.length?"repeated-coauthors":"work-orcid",identityEvidence:reason,
+        identityEvidenceUrl:validUrl(r.evidenceUrl||r.url),identityAnchors:supports};
+    });
+  }
+  window.AtlasFederation=Object.freeze({search,load,merge,resolveIdentity,importScholar,matchScholarByline,enrichDOIs});
 })();

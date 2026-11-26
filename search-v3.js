@@ -41,8 +41,8 @@
     return `<section class="fs3" data-federated-search><header class="page-head"><div><h1>跨库学者检索</h1><p>从 Google Scholar 建立论文清单，再用其他来源核对署名、引用与单位。</p></div></header>
     <section class="fs3-panel fs4-primary"><h2>从 Google Scholar 开始</h2>
     <form class="fs4-start" data-fs-form="start"><label>作者主页或 Scholar ID<input name="profile" maxlength="600" autocomplete="off" placeholder="scholar.google.com/citations?user=…"></label>
-    <label>学者姓名<input name="scholarName" maxlength="200" placeholder="姓名可用于查找主页"></label>
-    <div class="fs4-paths"><button class="solid" type="submit">打开 Scholar 档案</button><a data-fs-dir href="${directory("")}" target="_blank" rel="noopener noreferrer">在 Scholar 查找作者 ↗</a></div>
+    <label>学者姓名<input name="scholarName" maxlength="200" placeholder="姓名可用于查找主页" value="${esc(query)}"></label>
+    <div class="fs4-paths"><button class="solid" type="submit">打开 Scholar 档案</button><a data-fs-dir href="${directory(query)}" target="_blank" rel="noopener noreferrer">在 Scholar 查找作者 ↗</a></div>
     <label class="fs4-files">导入 Scholar 网页或书目（可多选）<input name="file" type="file" multiple accept="${scholarTypes}"></label></form>
     <p class="fs4-help">${hosted()?'<a href="/signin-with-chatgpt" target="_top">登录站点账户</a> 后打开 Scholar 档案，可使用自己的 SerpApi Key 在线读取。':link(cloudURL,"登录云端版并在线读取 Scholar 主页")}</p>
     <p class="fs4-help">在公开作者主页点击「显示更多」直至所需论文全部展开，再用浏览器保存 HTML，能保留表中显示的逐篇被引次数。自己的主页也可导出 BibTeX 或 CSV。${link("https://scholar.google.com/intl/en-US/scholar/citations.html","Google 导出帮助")}</p></section>
@@ -56,7 +56,7 @@
       <div data-fs-region="saved"></div><div data-fs-region="status" role="status" aria-live="polite"></div>
       <div data-fs-region="candidates"></div><div data-fs-region="result"></div></section>`;
   }
-  function active(root){return latestMount===root && root.isConnected;}
+  function active(root){return Boolean(root && latestMount===root && root.isConnected);}
   function tell(msg,bad=false){notice=msg;error=bad;}
   function candidateSection(){
     if (!candidates.length) return "";
@@ -64,7 +64,7 @@
     const button=(c,i)=>`<button type="button" class="fs3-candidate" data-fs-candidate="${i}"><span><b>${esc(c.name)}</b><small>${esc(c.affiliation || "单位待核")}</small></span><span>${esc((c.matchSources||[c.provider]).map(s=>providers[s]||s).filter(Boolean).join(" · "))}<small>${esc([orcid(c),c.detail||c.id].filter(Boolean).join(" · "))}</small></span></button>`;
     return `<section class="fs3-panel"><h2>${attachMode?"选择同一人的另一份档案":"选择学者档案"}</h2><div class="fs3-candidates">${candidates.slice(0,8).map(button).join("")}</div>
       ${candidates.length>8?`<details><summary>其余 ${candidates.length-8} 位候选</summary><div class="fs3-candidates">${candidates.slice(8).map((c,i)=>button(c,i+8)).join("")}</div></details>`:""}
-      ${proposed?`<form data-fs-form="attach" class="fs3-proof"><b>补充归属到 ${esc(draft.name)}</b><p>候选档案：${esc(proposed.name)} · ${esc(proposed.id || "")}。不同档案中缺少共同 ORCID 的新增论文将保留为身份待核。</p><label>同人依据或经历说明<input name="reason" required maxlength="400" placeholder="例如两份档案共同引用的院系主页"></label><button class="outline" type="submit">确认加入候选论文</button></form>`:""}
+      ${proposed?`<form data-fs-form="attach" class="fs3-proof"><b>补充归属到 ${esc(draft.name)}</b><p>候选档案：${esc(proposed.name)} · ${esc(proposed.id || "")}。系统将用逐篇 ORCID 或与已核实论文重复出现的合作者核对新增论文。其余归属保留待核。</p><label>同人依据或经历说明<input name="reason" required maxlength="400" placeholder="例如两份档案共同引用的院系主页"></label><button class="outline" type="submit">确认加入候选论文</button></form>`:""}
       </section>`;
   }
   function coverageView(){
@@ -72,7 +72,8 @@
     if(!coverage.length) return "";
     return `<details class="fs3-cover" open><summary>来源覆盖范围</summary><div class="fs3-scroll"><table><thead><tr><th>来源</th><th>已读取</th><th>来源命中</th><th>状态与说明</th></tr></thead><tbody>${coverage.map(c=>`<tr><td>${esc(c.source)}${draft.providers.length>1 && c.target?`<small>${esc(c.target)}</small>`:""}</td><td>${esc(c.scanned??"—")}</td><td>${esc(c.hits??"—")}</td><td>${esc(statusNames[c.status]||c.status)}${c.message?`<small>${esc(c.message)}</small>`:""}</td></tr>`).join("")}</tbody></table></div></details>`;
   }
-  function recordStatus(r){return r.excluded?"已排除":r.identityPending?"待核":"已计入";}
+  function recordStatus(r){return r.excluded?"已排除":r.identityPending?"待核":r.identityBasis==="repeated-coauthors"?"已交叉核实":"已计入";}
+  function resolve(d){d.records=engine().resolveIdentity?.(d.records,d.candidate)||d.records;}
   const fullName = name => String(name||"").normalize("NFKC").toLowerCase().replace(/[.,，]/g," ").replace(/\s+/g," ").trim();
   function batchCandidates(){
     const id=boundScholar(draft), name=fullName(draft.name);
@@ -98,8 +99,9 @@
     ${items.length?`<div class="fs3-scroll"><table><thead><tr><th>题名与来源</th><th>年份</th><th>归属</th></tr></thead><tbody>${items.map(r=>{
       const idx=draft.records.indexOf(r), src=(r.sources||[]).join(" · ")||r.source||"";
       const links=(r.provenance||[]).map(p=>link(p.url,p.source)).join(" · ");
+      const witnesses=(r.identityAnchors||[]).map((p,i)=>link(p.url,"已核实合著论文 "+(i+1))).join(" · ");
       return `<tr><td>${link(r.url,r.title)}<small>${links||esc(src)}</small>${r.conflicts?.length?`<small>跨库字段有差异，需对照来源</small>`:""}</td><td>${esc(r.year||"—")}</td><td><button class="fs3-inline" data-fs-review="${idx}">${recordStatus(r)}</button></td></tr>
-      ${idx===reviewRow?`<tr><td colspan="3"><form class="fs3-proof" data-fs-form="review"><p>${esc(r.identityEvidence||r.evidence||"请对照原文署名、ORCID 或作者主页确认身份。")}</p><label>身份判定<select name="decision"><option value="yes">计入本人论文</option><option value="pending" ${r.identityPending?"selected":""}>保留待核</option><option value="no" ${r.excluded?"selected":""}>排除该论文</option></select></label><label>证据链接<input type="url" name="url" value="${esc(http(r.identityEvidenceUrl)||http(r.url))}" required></label><label>核查说明<input name="note" required maxlength="450" value="${esc(r.review?.note||"")}" placeholder="记录原文、主页或标识符匹配的依据"></label><button type="submit" class="outline">保存判定</button></form></td></tr>`:""}`;
+      ${idx===reviewRow?`<tr><td colspan="3"><form class="fs3-proof" data-fs-form="review"><p>${esc(r.identityEvidence||r.evidence||"请对照原文署名、ORCID 或作者主页确认身份。")}</p>${witnesses?`<p>${witnesses}</p>`:""}<label>身份判定<select name="decision"><option value="yes">计入本人论文</option><option value="pending" ${r.identityPending?"selected":""}>保留待核</option><option value="no" ${r.excluded?"selected":""}>排除该论文</option></select></label><label>证据链接<input type="url" name="url" value="${esc(http(r.identityEvidenceUrl)||http(r.url))}" required></label><label>核查说明<input name="note" required maxlength="450" value="${esc(r.review?.note||"")}" placeholder="记录原文、主页或标识符匹配的依据"></label><button type="submit" class="outline">保存判定</button></form></td></tr>`:""}`;
     }).join("")}</tbody></table></div><div class="fs3-pager"><button class="outline" data-fs-action="prev" ${page===0?"disabled":""}>上一页</button><span>${page+1} / ${Math.ceil(rows.length/size)}</span><button class="outline" data-fs-action="next" ${(page+1)*size>=rows.length?"disabled":""}>下一页</button></div>`:"<p>此状态下没有论文。</p>"}`;
   }
   function scholarView(){
@@ -134,7 +136,7 @@
   function restoreDraft(){
     try {
       const d=JSON.parse(localStorage.getItem(storageKey));
-      if(d?.kind==="federated" && d.candidate && Array.isArray(d.records) && Array.isArray(d.providers) && Array.isArray(d.scholarImports)) draft=d;
+      if(d?.kind==="federated" && d.candidate && Array.isArray(d.records) && Array.isArray(d.providers) && Array.isArray(d.scholarImports)){draft=d;resolve(d);}
     } catch {}
   }
   function syncScope(scope){
@@ -179,8 +181,10 @@
       const org=find.elements.org.value.trim().normalize("NFKC").toLowerCase();
       const isCase=["zhihao zhong","zhong zhihao","钟志豪","鍾志豪"].includes(normalized)
         && (!org || /cardiff|卡迪夫|加的夫|harbin institute of technology|哈尔滨工业大学|哈爾濱工業大學|哈工大|\bhit(?:sz)?\b/i.test(org));
+      const isHe=["kaiming he","he kaiming","何恺明","何愷明"].includes(normalized) &&
+        (!org || /massachusetts institute of technology|麻省理工|\bmit\b|csail|meta|facebook|fair|微软|microsoft|清华|tsinghua/i.test(org));
       const named=Boolean(name && submittedName===name && /\p{L}/u.test(name) && !/[/:@<>\d]/u.test(name));
-      part("local").innerHTML=attachMode?"":(isCase?`<section class="fs3-local"><div><h2>Zhihao Zhong · 钟志豪</h2><p>经原文核查的 Cardiff 作者目录样本，含 4 篇期刊论文。另附 2026 年会议列名哈工大（深圳）的单位证据。画像覆盖样本全部年份。</p></div><div><a href="#zhong">查看已核查画像 ↗</a><a href="./zhong.html">查看逐篇署名依据</a></div></section>`:"")+(named && !loading && !scholarBusy?`<button class="fs3-inline fs3-resume" data-fs-action="manual">以「${esc(name)}」建立空白档案，直接导入书目</button>`:"");
+      part("local").innerHTML=attachMode?"":(isCase?`<section class="fs3-local"><div><h2>Zhihao Zhong · 钟志豪</h2><p>经原文核查的 Cardiff 作者目录样本，含 4 篇期刊论文。另附 2026 年会议列名哈工大（深圳）的单位证据。画像覆盖样本全部年份。</p></div><div><a href="#zhong">查看已核查画像 ↗</a><a href="./zhong.html">查看逐篇署名依据</a></div></section>`:"")+(isHe?`<section class="fs3-local"><div><h2>Kaiming He · 何恺明</h2><p>MIT 作者公开目录的 CVPR / ICCV 会议论文样本，可逐篇查看署名和合作者。</p></div><a href="#he">查看已核查画像 ↗</a></section>`:"")+(named && !loading && !scholarBusy?`<button class="fs3-inline fs3-resume" data-fs-action="manual">以「${esc(name)}」建立空白档案，直接导入书目</button>`:"");
     }
     function draw(){
       if(!active(root)) return;
@@ -226,7 +230,7 @@
         if(attempt!==run || d!==draft || !active(root)) return;
         const raw=Array.isArray(bundle.records)?bundle.records:[];
         const rows=provider.reviewNew?reviewOnly(raw,"补充档案来自 "+provider.candidate.name+"。同人线索："+provider.reason):raw;
-        d.records=engine().merge(d.records,rows);
+        d.records=engine().merge(d.records,rows);resolve(d);
         provider.coverage=bundle.coverage||[];provider.failed=false;
         const next=bundle.nextCursor||null;
         provider.nextCursor=cursor && JSON.stringify(cursor)===JSON.stringify(next)?null:next;
@@ -287,7 +291,7 @@
         }
         let rows=batch.records.filter(r=>!d.liveYear||String(r.year)===String(d.liveYear));
         rows=rows.map(r=>engine().matchScholarByline?engine().matchScholarByline(r,d.candidate):r);
-        d.records=engine().merge(d.records,rows);
+        d.records=engine().merge(d.records,rows);resolve(d);
         d.scholarImports.push({name:batch.label,count:batch.records.length,date:date(),hasMore:batch.hasMore});
         seen+=batch.records.length;eligible+=rows.length;
       }
@@ -355,7 +359,7 @@
         if(d.candidate.scholarPlaceholder && result.name){d.name=result.name;d.candidate.name=result.name;d.candidate.scholarPlaceholder=false;}
         if(!d.affiliation&&result.affiliation)d.affiliation=result.affiliation;
         const raw=result.records, rows=raw.filter(r=>!d.liveYear||String(r.year)===String(d.liveYear)).map(r=>engine().matchScholarByline?engine().matchScholarByline(r,d.candidate):r);
-        d.records=engine().merge(d.records,rows);d.scholarProfileId=id;
+        d.records=engine().merge(d.records,rows);resolve(d);d.scholarProfileId=id;
         d.scholarLive={url:scholarUrl,nextStart:result.nextStart??null,count:(d.scholarLive?.count||0)+raw.length};
         added+=rows.length;received+=raw.length;offset=result.nextStart;
         tell(`本次已读取 ${pageNo} 页，返回 ${received} 条，${added} 条符合年份范围。${offset==null?"服务已返回末页。":""}`);storeDraft();draw();
@@ -372,7 +376,7 @@
       try{
         const result=await engine().enrichDOIs(d.records,d.candidate,{limit:20,retry});
         if(attempt!==run||d!==draft||!active(root))return;
-        d.records=result.records;
+        d.records=result.records;resolve(d);
         tell(`本批核对 ${result.lookedUp} 篇，补齐 ${result.matched} 篇，尚有 ${result.remaining??0} 篇待核对。`+(result.errors?.length?" 部分来源返回错误。":""));
         storeDraft();
       }catch(e){if(attempt===run)tell("元数据核对失败。"+e.message,true);}
@@ -487,5 +491,16 @@
     draw();
     return ()=>{if(latestMount===root){latestMount=null;run++;searching=false;loading=false;scholarBusy=false;liveReading=false;}};
   }
-  window.AtlasSearchV3={render,mount,syncScope};
+  function prefill(name,affiliation=""){
+    query=String(name||"").trim().slice(0,200);
+    unit=String(affiliation||"").trim().slice(0,200);
+    year="";
+    if(!active(latestMount))return;
+    const find=latestMount.querySelector('[data-fs-form="find"]');
+    const start=latestMount.querySelector('[data-fs-form="start"]');
+    if(find){find.elements.person.value=query;find.elements.org.value=unit;find.elements.year.value="";}
+    if(start)start.elements.scholarName.value=query;
+    const dir=latestMount.querySelector('[data-fs-dir]');if(dir)dir.href=directory(query);
+  }
+  window.AtlasSearchV3={render,mount,syncScope,prefill};
 })();

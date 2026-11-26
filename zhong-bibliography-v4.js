@@ -6,6 +6,7 @@
   const thesisPdf = thesis + "1/PhD_Thesis_Zhihao_Zhong.pdf";
   const forum = "https://formnextasia.gymf.com.cn/list/2041";
   const programme = "https://staticgw.gymf.com.cn/images/20260729/0324ff673effbcb393109e82226f7d7713faf24e.jpg";
+  const dblpProfile = "https://dblp.org/pid/199/7565";
   const scholar = "https://scholar.google.com/";
   const observedAt = "2026-11-24";
 
@@ -67,9 +68,17 @@
       (item.type==="THES"?link(thesisPdf+"#page=5","作者自列论文清单")+" · "+link(searchTitle(item.title),"Google Scholar 查题名"):link(forum,"论坛活动页"))+'</p></li>').join("");
     const authorSearch = scholar+"citations?view_op=search_authors&hl=zh-CN&mauthors="+encodeURIComponent("Zhihao Zhong");
     const searchBoth = scholar+"scholar?hl=zh-CN&q="+encodeURIComponent('author:"Z Zhong" author:"S Kulasegaram" laser');
+    const creditRows = papers.filter(p => p.contribution?.credits?.length && p.contribution.evidenceUrl).map(p =>
+      '<li><b>'+esc(p.short || p.title)+'</b> · '+esc(p.contribution.credits.join("、"))+' · '+link(p.contribution.evidenceUrl,"论文贡献声明")+'</li>'
+    ).join("");
     return '<section class="panel boxpad pv-panel" id="zhong-bibliography"><h2>书目核查与补充成果</h2><p>已核实 '+papers.length+' 篇期刊论文、1 篇博士学位论文，另有 1 项中文会议报告议程。署名论文与被引统计采用期刊论文口径。</p>'+
       '<div class="buttonset">'+link(authorSearch,"Google Scholar 查找作者")+'　'+link(searchBoth,"按合作者检索")+'　'+link(catalog,"Cardiff 作者目录")+'</div>'+
       '<p>Google Scholar 个人主页仍待本人或机构来源确认。可按完整题名逐篇查找，再将导出的书目加入档案。</p>'+
+      '<details><summary>哪些检索结果已经核对？（2026-11-27）</summary><ul>'+
+      '<li>'+link(catalog,"Cardiff 作者目录")+' 共列 5 项，其中 4 篇期刊论文均与学位论文内列出的发表清单吻合，第 5 项为博士学位论文。</li>'+
+      '<li>'+link(dblpProfile,"DBLP 同名作者页")+' 列有 7 条。激光熔池论文与 Cardiff 目录重复；其余 5 条无线通信研究及 1 条机器人预印本缺乏把署名作者与本档案连起来的证据，已在本示例中集中处理。</li>'+
+      '<li>'+link(forum,"深圳会议")+' 的议程支持哈工大（深圳）署名，截至此次核查，尚未核实以该单位署名的新期刊论文。</li></ul></details>'+
+      '<details><summary>逐篇核对研究构思、方法与软件贡献</summary><p>列出原文中分配给钟志豪的贡献。同一项工作可以由多名作者承担。</p><ul>'+creditRows+'</ul></details>'+
       '<details><summary>四篇期刊论文的 Google Scholar 检索入口</summary><ul>'+standardRows+'</ul></details>'+
       '<h3>学位论文与会议记录</h3><ul class="pv-refs">'+supplementaryRows+'</ul>'+
       '<a class="outline" download="Zhihao-Zhong-research-outputs.ris" href="data:application/x-research-info-systems;charset=utf-8,'+esc(encodeURIComponent(exportRis(papers)))+'">导出核实书目（RIS）</a></section>';

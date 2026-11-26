@@ -10,6 +10,8 @@ const paths={grid:"M4 4h6v6H4z M14 4h6v6h-6z M4 14h6v6H4z M14 14h6v6h-6z",list:"
 const icon=name=>`<svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="${paths[name]||paths.file}"/></svg>`;
 const pageMap={search:["多源检索","search"],overview:["成果概览","grid"],papers:["论文清单","list"],profile:["学者画像","user"],metrics:["署名与合作","layers"],claims:["机构年度认领","institution"],ai:["AI 解读","book"],imports:["数据导入","upload"],classic:["单库检索","search"],method:["统计口径","book"]};
 Object.assign(pageMap,{score:["固定指数与引用","layers"],chinese:["中文文献与核心目录","book"],report:["学者证据报告","file"],ai:["论文问答","book"]});
+pageMap.insights=["科研能力分析","layers"];
+pageMap.he=["何恺明 · 书目档案","user"];
 pageMap.zhong=["钟志豪 · 学者画像","user"];
 const roleNames={first:"首位作者",cofirst:"共同一作",corresponding:"通讯作者",cocorresponding:"共同通讯"};
 const familyNames={flagship:"CNS 主刊",family:"系列期刊",other:"其他期刊",unknown:"目录未覆盖"};
@@ -136,12 +138,12 @@ function tags(r){
 }
 function drawNav(){
  const navItem=(n)=>`<button class="nav-item${page()===n?" active":""}" data-page="${n}" ${page()===n?'aria-current="page"':""}>${icon(pageMap[n][1])}<span>${pageMap[n][0]}</span></button>`;
- byId("nav").innerHTML=["search","chinese","overview","papers","score","profile","ai","report","claims"].map(navItem).join("");
+ byId("nav").innerHTML=["search","chinese","overview","papers","insights","score","profile","ai","report","claims"].map(navItem).join("");
  byId("support-nav").innerHTML=["metrics","imports","classic","method"].map(navItem).join("");
  byId("page-name").textContent=pageMap[page()][0];
  byId("guide").innerHTML=icon("help")+"使用指南";byId("menu-btn").innerHTML=icon("menu");byId("dia-close").innerHTML=icon("x");
 }
-function nav(n){byId("sidebar").classList.remove("open");byId("shade").classList.remove("open");if(page()===n)render();else location.hash=n;}
+function nav(n){byId("sidebar").classList.remove("open");byId("shade").classList.remove("open");if(["zhong","he"].includes(page()) && ["papers","insights","score","ai","report","profile","metrics","overview","chinese"].includes(n)){setScope(page()==="he"?window.AtlasLibraryCaseV5.scope():zhongScope("author"),n);return;}if(page()===n)render();else location.hash=n;}
 function dia(title,html){byId("dia-title").textContent=title;byId("dia-content").innerHTML=html;if(!byId("dialog").open)byId("dialog").showModal();}
 const closeDia=()=>byId("dialog").close();
 const yearsSelect=()=>`<label class="years">${icon("calendar")}<select aria-label="发表年份" data-control="year">${option("","全部年份",year)}${years().map(y=>option(y,`${y} 年`,year)).join("")}</select></label>`;
@@ -243,8 +245,8 @@ function authorOnly(){
  return '<section class="panel boxpad"><h1>请选择学者档案</h1><p>当前打开的是机构。可在多源检索中选择学者，或直接打开钟志豪的核查样本。</p><div class="buttonset"><a href="#search">检索学者</a><a href="#zhong">钟志豪的学者画像</a></div></section>';
 }
 function profileScreen(v,samplePage=false){
- const buttons=samplePage?'<button class="outline" data-case-page="report">导出钟志豪的报告</button><button class="outline" data-case-page="ai">就这些论文提问</button><a href="./zhong.html">逐篇署名与期刊影响因子</a>':'<a href="#report">导出学者证据报告</a><a href="#ai">就这些论文提问</a><a href="#chinese">补充中文文献</a>';
- return '<div class="buttonset workspace-links">'+buttons+'</div>'+window.AtlasScorecardV4.render(v.records,v)+(samplePage||v.kind==="case"?window.AtlasZhongBibliographyV4.render():"")+window.AtlasProfileV3.render(v.records,v);
+ const buttons=v.kind==="public-bibliography"?'<button class="outline" data-he-open="papers">浏览完整论文清单</button><button class="outline" data-he-open="report">导出当前档案报告</button>':samplePage?'<button class="outline" data-case-page="report">导出钟志豪的报告</button><button class="outline" data-case-page="ai">就这些论文提问</button><a href="./zhong.html">逐篇署名与期刊影响因子</a>':'<a href="#report">导出学者证据报告</a><a href="#ai">就这些论文提问</a><a href="#chinese">补充中文文献</a>';
+ return '<div class="buttonset workspace-links">'+buttons+'<button class="outline" data-research-search>继续检索此人</button></div>'+window.AtlasInsightsV5.render(v.records,v)+window.AtlasScorecardV4.render(v.records,v)+(samplePage||v.kind==="case"?window.AtlasZhongBibliographyV4.render():"")+window.AtlasProfileV3.render(v.records,v);
 }
 function papers(){const rows=filtered();
  const roleOptions=scope.mode==="institution"?[["unit","第一单位"],["nonunit","非第一单位"],["unit-pending","单位待核"]]:[["lead","一作（含共一）"],...Object.entries(roleNames),["union","一作或通讯"],["no-role","其余或待核"]];
@@ -262,7 +264,7 @@ function continuation(){
 function importsView(){
  return `<div class="page-head"><div><h1>数据导入</h1><p>导入个人书目或有权使用的分区表，补充当前工作区。</p></div></div><div class="twopanels">
  <section class="panel boxpad stack"><div><span class="labelico">${icon("book")}<b>Google 学术书目</b></span><p>在个人学术主页勾选论文，点击“导出”，选择 BibTeX 或 CSV。署名和通讯关系可逐篇补证。</p></div><label>档案名称<input style="width:100%;margin-top:5px" class="field" id="import-name" placeholder="例如：Zhihao Zhong"></label><label>书目文件<input class="file-input" id="bib-file" type="file" accept=".csv,.bib,.bibtex,.txt"></label><div><button class="solid" data-act="bib-import">${icon("upload")}导入书目</button></div><div id="bib-note" class="notice" role="status"></div></section>
- <section class="panel boxpad stack"><div><span class="labelico">${icon("layers")}<b>期刊分区表</b></span><p>支持 JCR 和中科院历史版。CSV 每行对应一个 ISSN、版本年和学科，以本次文件更新本地分区表。</p></div><div class="buttonset"><button class="outline" data-act="template">${icon("down")}下载 CSV 模板</button><span class="muted">已载入 ${ranks.length} 条</span></div><label>分区文件<input class="file-input" type="file" id="rank-file" accept=".csv,.tsv,.txt"></label><div><button class="solid" data-act="rank-import">${icon("upload")}更新分区表</button></div><div class="notice" id="rank-note" role="status"></div></section></div>
+ <section class="panel boxpad stack"><div><span class="labelico">${icon("layers")}<b>期刊分区表</b></span><p>支持 JCR 和中科院历史版。CSV 每行对应一个 ISSN、版本年和学科，以本次文件更新本地分区表。可带 scope（大类或小类）、top（是或否）、source（出处链接）。</p></div><div class="buttonset"><button class="outline" data-act="template">${icon("down")}下载 CSV 模板</button><span class="muted">已载入 ${ranks.length} 条</span></div><label>分区文件<input class="file-input" type="file" id="rank-file" accept=".csv,.tsv,.txt"></label><div><button class="solid" data-act="rank-import">${icon("upload")}更新分区表</button></div><div class="notice" id="rank-note" role="status"></div></section></div>
  <section class="panel boxpad content-panel"><h2>年度影响因子</h2><p>按 ISSN 和 JIF 指标年匹配。CSV 包含 issn、year、jif、source 四列，source 填写来源的 HTTPS 链接。导入多年份后可在论文清单切换指标年。</p><div class="buttonset"><button class="outline" data-act="impact-template">下载模板</button><span class="muted">自定义 ${impactRows.length} 条</span></div><label>影响因子文件<input class="file-input" id="impact-file" type="file" accept=".csv,.txt"></label><button class="solid" data-act="impact-import">合并影响因子数据</button><div id="impact-note" class="notice" role="status"></div></section>
  <section class="panel boxpad content-panel" style="margin-top:16px"><h2>OpenAlex 查询额度</h2><p>若 OpenAlex 要求密钥或返回额度限制，可在此应用个人 API Key 后重新查询。密钥仅保存在当前页面内存中，随请求发送到 OpenAlex。</p><div class="buttonset"><input id="api-key" class="field" type="password" autocomplete="off" aria-label="个人 OpenAlex API Key" placeholder="OpenAlex API Key"><button class="outline" data-act="apply-key">应用密钥</button>${hasKey?'<button class="plain" data-act="clear-key">移除密钥</button>':""}${external("https://openalex.org/settings/api","获取密钥")}</div></section>
  <section class="panel boxpad"><h2>精选档案</h2><p>眼科 AI 学者与大学的真实论文选录，可离线核查署名和第一单位。</p><div class="buttonset"><button class="outline" data-act="sample">学者示例 ${icon("arrow")}</button><button class="outline" data-act="org-sample">机构示例 ${icon("arrow")}</button></div></section>${recent().length?`<section class="panel boxpad" style="margin-top:15px"><h2>最近档案</h2>${recent().map((p,i)=>`<button class="candidate" data-recent="${i}"><strong>${esc(p.name)}</strong><small>${p.records.length} 篇 · ${esc(p.source)}</small></button>`).join("")}</section>`:""}`;
@@ -294,15 +296,23 @@ function render(){
  disposeView=null;
  drawNav();
  const p=page(),main=byId("main");
- const screens={zhong:()=>profileScreen(zhongScope("author"),true),score:()=>scope.mode==="author"?'<header class="page-head"><div><h1>固定指数与引用</h1><p>'+esc(scope.displayName||scope.name)+'</p></div></header>'+window.AtlasScorecardV4.render(scope.records,scope):authorOnly(),chinese:()=>scope.mode==="author"?window.AtlasCN.render(scope):authorOnly(),report:()=>window.AtlasReportV4.render(scope),overview:()=>overview()+continuation(),search:()=>window.AtlasSearchV3.render(),classic:hero,papers,metrics:metricsPage,
+ const screens={he:()=>profileScreen(window.AtlasLibraryCaseV5.scope()),insights:()=>scope.mode==="author"?'<header class="page-head"><div><h1>科研能力分析</h1><p>'+esc(scope.displayName||scope.name)+'</p></div></header>'+window.AtlasInsightsV5.render(scope.records,scope):authorOnly(),zhong:()=>profileScreen(zhongScope("author"),true),score:()=>scope.mode==="author"?'<header class="page-head"><div><h1>固定指数与引用</h1><p>'+esc(scope.displayName||scope.name)+'</p></div></header>'+window.AtlasScorecardV4.render(scope.records,scope):authorOnly(),chinese:()=>scope.mode==="author"?window.AtlasCN.render(scope):authorOnly(),report:()=>window.AtlasReportV4.render(scope),overview:()=>overview()+continuation(),search:()=>window.AtlasSearchV3.render(),classic:hero,papers,metrics:metricsPage,
   profile:()=>scope.mode==="author"?profileScreen(scope):'<section class="panel boxpad"><h1>当前打开的是机构档案</h1><p>查看学者画像，请先选定一位学者。机构成果可按年度核对署名单位与认领人。</p><div class="buttonset"><a href="#search">查找学者</a><a href="#claims">进入机构年度认领</a></div></section>',claims:()=>window.AtlasClaimsV3.render(),ai:()=>window.AtlasAIV3.render(),imports:importsView,method};
  main.innerHTML=screens[p]();
- if(p==="zhong" || (p==="profile" && scope.mode==="author")){
-  const subject=p==="zhong"?zhongScope("author"):scope, archive=subject.archiveId;
+ if(p==="zhong" || p==="he" || (p==="profile" && scope.mode==="author")){
+  const subject=p==="zhong"?zhongScope("author"):p==="he"?window.AtlasLibraryCaseV5.scope():scope, archive=subject.archiveId;
   main.insertAdjacentHTML("afterbegin",`<header class="page-head"><div><h1>${esc(subject.displayName||subject.name)}</h1><p>${esc(subject.kind==="case"?"Cardiff 目录核查样本":subject.affiliation||"学者画像")}${archive?" · 本地档案编号 "+esc(archive):""}${subject.archiveIdConflict?" · 档案标识存在冲突，需人工核查":""}</p></div></header>`);
  }
+ if(p==="he"||(p==="profile"&&scope.kind==="public-bibliography")){
+  const example=window.AtlasLibraryCaseV5.scope();
+  main.querySelector("header")?.insertAdjacentHTML("beforeend",'<div><p>'+esc(example.note)+'</p><p>'+external(example.catalog,"核对 MIT 作者书目")+' · '+external(example.scholarUrl,"Google Scholar 主页")+'</p></div>');
+ }
+ if(["profile","zhong","he","insights"].includes(p)){
+  const subject=p==="zhong"?zhongScope("author"):p==="he"?window.AtlasLibraryCaseV5.scope():scope;
+  if(subject.mode==="author")disposeView=window.AtlasInsightsV5.mount(main,subject.records,subject);
+ }
  if(p==="search"){
-  main.insertAdjacentHTML("beforeend", '<div class="entry-routes"><section><h2>钟志豪的学者画像</h2><p>查看 Cardiff 的逐篇署名，以及哈工大（深圳）会议记录提供的单位线索。</p><div><a href="#zhong">打开画像 ↗</a><a href="./zhong.html">逐篇核查卡</a></div></section><section><h2>机构年度认领</h2><p>按发表年份找出署名本院的论文，与人员名册匹配并导出认领结果。</p><div><a href="#claims">进入年度工作台 ↗</a></div></section></div>');
+  main.insertAdjacentHTML("beforeend", '<div class="entry-routes"><section><h2>钟志豪的学者画像</h2><p>查看 Cardiff 的逐篇署名，以及哈工大（深圳）会议记录提供的单位线索。</p><div><a href="#zhong">打开画像 ↗</a><a href="./zhong.html">逐篇核查卡</a></div></section><section><h2>机构年度认领</h2><p>按发表年份找出署名本院的论文，与人员名册匹配并导出认领结果。</p><div><a href="#claims">进入年度工作台 ↗</a></div></section><section><h2>何恺明的计算机视觉论文</h2><p>从已核对身份的公开书目查看逐篇合作者与发表场所。</p><a href="#he">打开书目档案 ↗</a></section></div>');
   disposeView=window.AtlasSearchV3.mount(main,{scope,onOpen:(v,dest="profile")=>setScope(v,dest==="ai"?"ai":"profile")});
  }
  if(p==="chinese"&&scope.mode==="author")disposeView=window.AtlasCN.mount(main,{scope,onMerge:rows=>{openChineseRows(rows);return scope.records;}});
@@ -479,6 +489,12 @@ function saveReview(form){
 }
 document.addEventListener("click",e=>{
  const b=e.target.closest("button");if(!b)return;
+ if(b.hasAttribute("data-research-search")){
+  const person=page()==="he"?window.AtlasLibraryCaseV5.scope():page()==="zhong"?zhongScope("author"):scope;
+  window.AtlasSearchV3.prefill(person.name,person.kind==="case"?"Cardiff University":person.candidate?.affiliationHint||"");
+  nav("search");return;
+ }
+ if(b.dataset.heOpen && ["papers","report"].includes(b.dataset.heOpen)){setScope(window.AtlasLibraryCaseV5.scope(),b.dataset.heOpen);return;}
  if(b.dataset.casePage && ["report","ai","papers","search"].includes(b.dataset.casePage)){setScope(zhongScope("author"),b.dataset.casePage);return;}
  if(b.dataset.page){nav(b.dataset.page);return;}
  if(b.hasAttribute("data-mode")){snapshotDraft();requestSeq++;busy=false;notice="";if(searchMode!==b.dataset.mode)query="";searchMode=b.dataset.mode;render();byId("query")?.focus();return;}

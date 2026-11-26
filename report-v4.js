@@ -48,10 +48,20 @@
     for(const id of before)if(!ids.has(id))removed++;
     return '<p>与 '+esc(previous.at)+' 保存的同档案、同发表年份范围相比，新增计入 <b>'+added+'</b> 篇，移出 <b>'+removed+'</b> 篇。变动包括新收录和人工核查调整。</p>';
   }
+  function capabilitySummary(scope) {
+    const analysis=window.AtlasInsightsV5.analyze(scope.records,scope);
+    const measures=[
+      ["学术独立性（论文贡献）",analysis.indScore,analysis.ind],
+      ["高分区主导发表率（中科院 2025 版）",analysis.pubScore,analysis.publication],
+      ["资源整合（跨机构合作）",analysis.resourceScore,analysis.resources]
+    ];
+    const body=measures.map(([name,score,parts])=>'<tr><th scope="row">'+name+'</th><td>'+esc(score.text)+'</td><td>'+parts.map(p=>esc(p.label)+' · '+p.yes+' 篇符合，'+p.known+'/'+p.n+' 篇可判定').join('<br>')+'</td></tr>').join("");
+    return '<section class="panel boxpad r4-capabilities"><h2>科研能力指标依据</h2><p>当前已归属成果 '+analysis.details.length+' 篇。指标使用固定权重；区间为缺失资料下的上下界。跨机构合作以作者单位署名为依据。</p><div class="r4-overflow"><table><thead><tr><th>指标</th><th>百分制</th><th>证据覆盖</th></tr></thead><tbody>'+body+'</tbody></table></div></section>';
+  }
   function render(scope){
     if(scope.mode!=="author")return '<section class="panel boxpad"><h1>学者证据报告</h1><p>请先选择学者。机构报表可在年度认领页导出。</p><a href="#claims">机构年度报表</a></section>';
     const d=make(scope);
-    return '<div class="r4-root"><header class="page-head"><div><h1>'+esc(d.name)+' · 科研成果报告</h1><p>生成日期 '+d.at+' · 发表年份 '+esc(d.span)+'</p></div><div class="buttonset r4-controls"><button class="solid" data-report="print">打印 / 保存 PDF</button><button class="outline" data-report="save" '+(!d.key?'disabled':'')+'>保存本次统计</button></div></header><section class="panel boxpad"><div class="r4-stats"><div><small>已核实论文</small><b>'+d.docs.length+' 篇</b></div><div><small>身份待核</small><b>'+d.pending+' 篇</b></div><div><small>固定指数 v'+esc(d.score.version)+'</small><b>'+fmt(d.score.score)+'</b></div></div><p>'+esc(d.score.reason||d.score.coverageText||"")+'</p><p>'+esc(d.sourceNote)+'</p><div data-r4-history>'+changes(d,archive(d)[0])+'</div><p data-r4-status aria-live="polite"></p></section><section class="panel boxpad r4-papers"><h2>逐篇证据</h2>'+bibliography(d)+'</section></div>';
+    return '<div class="r4-root"><header class="page-head"><div><h1>'+esc(d.name)+' · 科研成果报告</h1><p>生成日期 '+d.at+' · 发表年份 '+esc(d.span)+'</p></div><div class="buttonset r4-controls"><button class="solid" data-report="print">打印 / 保存 PDF</button><button class="outline" data-report="save" '+(!d.key?'disabled':'')+'>保存本次统计</button></div></header><section class="panel boxpad"><div class="r4-stats"><div><small>已核实论文</small><b>'+d.docs.length+' 篇</b></div><div><small>身份待核</small><b>'+d.pending+' 篇</b></div><div><small>固定指数 v'+esc(d.score.version)+'</small><b>'+fmt(d.score.score)+'</b></div></div><p>'+esc(d.score.reason||d.score.coverageText||"")+'</p><p>'+esc(d.sourceNote)+'</p><div data-r4-history>'+changes(d,archive(d)[0])+'</div><p data-r4-status aria-live="polite"></p></section>'+capabilitySummary(scope)+'<section class="panel boxpad r4-papers"><h2>逐篇证据</h2>'+bibliography(d)+'</section></div>';
   }
   function mount(container,scope){
     if(scope.mode!=="author")return;

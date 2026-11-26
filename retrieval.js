@@ -383,6 +383,30 @@
     return result;
   }
 
+  const creditRoles = new Map(Object.entries({
+    "conceptualization":"研究构思", "data-curation":"数据整理", "formal-analysis":"正式分析",
+    "funding-acquisition":"经费获取", "investigation":"研究实施", "methodology":"方法设计",
+    "project-administration":"项目管理", "resources":"研究资源", "software":"软件开发",
+    "supervision":"指导监督", "validation":"验证", "visualization":"可视化",
+    "writing-original-draft":"初稿撰写", "writing-review-editing":"审阅与编辑"
+  }));
+  function printedCreditRoles(contributor) {
+    const roles = new Set();
+    for (const node of Array.from(contributor.children).filter(child => child.localName === "role")) {
+      const vocab = compact(node.getAttribute("vocab") || node.getAttribute("vocab-identifier")).toLowerCase();
+      if (vocab && !/credit|contributor[_\s-]*roles|casrai/.test(vocab)) continue;
+      const keys = [node.getAttribute("vocab-term"), node.textContent].map(s => compact(s).toLowerCase()
+        .replace(/&|\band\b/g, " ").replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "")).filter(k => creditRoles.has(k));
+      const id = compact(node.getAttribute("vocab-term-identifier"));
+      if (id) {
+        const match = id.match(/^https?:\/\/(?:credit\.niso\.org\/contributor-roles|(?:www\.)?credit\.casrai\.org\/contributor-roles)\/([a-z-]+)\/?$/i);
+        if (match && creditRoles.has(match[1].toLowerCase())) keys.push(match[1].toLowerCase());
+      }
+      if (keys.length && new Set(keys).size === 1) roles.add(creditRoles.get(keys[0]));
+    }
+    return [...roles];
+  }
+
   async function verify(record, candidate, mode = 'author') {
     if (!candidate || !record) throw new Error('请先选择一条检索记录。');
     const pmcid = await pmcIdentifier(record);
@@ -407,6 +431,17 @@
       const author = mine[0];
       verified.contribution = enrichPrintedContribution(record, meta, authors, author, linked);
       const notes = [];
+      const credits = printedCreditRoles(author);
+      if (credits.length) {
+        const contribution = verified.contribution;
+        contribution.credits = unique([...(Array.isArray(contribution.credits) ? contribution.credits : []), ...credits]);
+        contribution.creditSourceUrl = verified.verificationUrl;
+        contribution.creditAtSource = credits;
+        if (!contribution.evidenceUrl) contribution.evidenceUrl = verified.verificationUrl;
+        if (credits.includes("研究构思")) contribution.conceptualization = true;
+        if (credits.includes("方法设计")) contribution.methodology = true;
+        notes.push("原文列给该作者的结构化贡献包括"+credits.join("、")+"。");
+      }
       const roles = new Set();
       if (authors[0] === author) { roles.add('first'); notes.push('署名表列为第一位。'); }
       const corr = authors.filter(a => a.getAttribute('corresp') === 'yes' || references(a, 'corresp').some(id => linked.get(id)?.localName === 'corresp'));

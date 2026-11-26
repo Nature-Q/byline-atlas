@@ -85,8 +85,9 @@
     const fields = Object.fromEntries(Object.entries({
       issn: ["issn", "刊号"], year: ["year", "edition_year", "edition", "版本年", "版本年份", "年份"],
       system: ["system", "体系", "分区体系"], category: ["category", "学科", "类别", "学科类别"],
-      quartile: ["quartile", "partition", "分区", "区位"], journal: ["journal", "期刊", "刊名", "期刊名称"]
-    }).map(([key, aliases]) => [key, chooseColumn(names, aliases, key !== "journal")]));
+      quartile: ["quartile", "partition", "分区", "区位"], journal: ["journal", "期刊", "刊名", "期刊名称"],
+      scope: ["scope", "学科层级", "大类或小类"], top: ["top", "top期刊"], source: ["source","来源","来源链接"]
+    }).map(([key, aliases]) => [key, chooseColumn(names, aliases, !["journal","scope","top","source"].includes(key))]));
     const entries = new Map();
     rows.forEach((row, index) => {
       const fail = message => { throw new Error("CSV 第 " + (index + 2) + " 行：" + message); };
@@ -104,16 +105,34 @@
       const quartile = quartileNumber(raw("quartile"));
       if (!quartile) fail("分区应为 Q1 至 Q4，或 1 至 4 区。");
       const journal = raw("journal");
-      const key = [issn, system, year, folded(category)].join("|");
+      const scopeRaw = folded(raw("scope"));
+      const scope = ["大类","major"].includes(scopeRaw) ? "major" : ["小类","minor"].includes(scopeRaw) ? "minor" : "";
+      if (scopeRaw && !scope) fail("scope 可填大类或小类。");
+      if (scope && system !== "CAS") fail("scope 仅用于中科院大类或小类，JCR 行请留空。");
+      const topRaw = folded(raw("top"));
+      const top = ["true","yes","1","是"].includes(topRaw) ? true : ["false","no","0","否"].includes(topRaw) ? false : null;
+      if (topRaw && (top === null || system !== "CAS")) fail("top 仅用于中科院，请填是、否或留空。");
+      const source = raw("source");
+      if (source) {
+        let url;
+        try { url = new URL(source); } catch { fail("来源链接无效。"); }
+        if (url.protocol !== "https:" || !url.hostname || url.username || url.password) fail("来源请填不含凭据的 HTTPS 网址。");
+      }
+      const key = [issn, system, year, folded(category), scope].join("|");
       const previous = entries.get(key);
       if (previous && previous.quartile !== quartile) fail("同一 ISSN、体系、年份和学科出现两个分区。");
-      if (!previous) entries.set(key, {issn, year, system, category, quartile, journal});
+      if (previous && top !== null && previous.top != null && previous.top !== top) fail("同一条目的 Top 标识冲突。");
+      const entry = previous || {issn, year, system, category, quartile, journal};
+      if (scope) entry.scope = scope;
+      if (top !== null) entry.top = top;
+      if (source && !entry.source) entry.source = source;
+      entries.set(key, entry);
     });
     return [...entries.values()];
   }
 
   function template() {
-    return "\uFEFFissn,year,system,category,quartile,journal\r\n";
+    return "\uFEFFissn,year,system,category,quartile,journal,scope,top,source\r\n";
   }
 
   // Google Scholar exports braced and quoted fields, often with nested braces in titles.
